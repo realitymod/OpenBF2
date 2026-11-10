@@ -504,6 +504,20 @@ PyRef buildArgs(world::IObject* const& a0, const int& a1)
     return result;
 }
 
+// [CHOSEN, not recovered] Not in retail: the ObjectSpawned script event's (object).
+PyRef buildArgs(world::IObject* const& a0)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(1);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
 //  (225 B), dedicated PE 0x5404D0: Python command arguments.
 // Both images retain the initialized guard, three stealing tuple insertions in this order,
 // and the PyRef/increment then decrement transfer. to_py(vector<int>) builds a nested tuple.
@@ -1932,9 +1946,9 @@ const ScriptEventMapEntry scriptEventMap[] =
     { "BeginRound",                 36 },  { "EndRound",                  37 },
     { "RemoteCommand",              38 },  { "ChatMessage",               39 },
     { "ValidatePlayerNameResponse", 40 },  { "SpottedMessageSent",        41 },
-    // [CHOSEN, not recovered] Project Reality event, not in retail: Player::setSpawnGroup's
-    // (playerId, group).
-    { "PlayerChangeSpawnGroup",     42 },
+    // [CHOSEN, not recovered] Project Reality events, not in retail: Player::setSpawnGroup's
+    // (playerId, group), and ObjectSpawner::spawnObject's (object).
+    { "PlayerChangeSpawnGroup",     42 },  { "ObjectSpawned",             43 },
     { 0,                             0 },
 };
 
@@ -2183,9 +2197,9 @@ bool PythonHost::initialize(bool minimal)
             return false;
         }
 
-        // THE magic 42 - see the block above. [CHOSEN, not recovered] 43 here: one more for
-        // PlayerChangeSpawnGroup.
-        d->m_vector28.resize(43);                        // +0x28, indexed by ScriptEvent
+        // THE magic 42 - see the block above. [CHOSEN, not recovered] 44 here: two more for
+        // PlayerChangeSpawnGroup and ObjectSpawned.
+        d->m_vector28.resize(44);                        // +0x28, indexed by ScriptEvent
 
         PyObject* const bf2Dict = PyModule_GetDict(d->m_bf2Module);
 
