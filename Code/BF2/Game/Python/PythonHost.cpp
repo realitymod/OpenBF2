@@ -968,6 +968,7 @@ PyObject* sgl_sendTextMessage(PyObject*, PyObject*);
 PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* sgl_pickUpKit(PyObject*, PyObject*);              //   [CHOSEN, not recovered]
 PyObject* sgl_giveKit(PyObject*, PyObject*);                //   [CHOSEN, not recovered]
+PyObject* sgl_resetSquads(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
@@ -1772,6 +1773,18 @@ PyObject* sgl_giveKit(PyObject*, PyObject* args)
     return PyInt_FromLong(1);
 }
 
+// [CHOSEN, not recovered] Project Reality's admin squad reset; not a retail host method.
+// host.sgl_resetSquads() resets squads 1-9 of teams 1 and 2.
+PyObject* sgl_resetSquads(PyObject*, PyObject*)
+{
+    ISquadManager* const squads = static_cast<ISquadManager*>(squadManager);
+    for (int team = 1; team <= 2; ++team)
+        for (int squad = 1; squad <= 9; ++squad)
+            squads->resetSquad(team, squad);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 // [CHOSEN, not recovered] Project Reality's anti-air override; not a retail host method.
 // host.sgl_disableExplosionLatencyComp(templateName): explosions of projectiles with this template
 // skip latency compensation, and the projectile is removed two ticks later.
@@ -2186,6 +2199,7 @@ PyMethodDef method_table[] =
     { "sgl_kickPlayer",              sgl_kickPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_pickUpKit",               sgl_pickUpKit,                      METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_giveKit",                 sgl_giveKit,                        METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_resetSquads",             sgl_resetSquads,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
