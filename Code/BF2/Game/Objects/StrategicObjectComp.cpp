@@ -57,6 +57,7 @@ void* StrategicObjectComp::getHudIcons() { return &m_template->m_destroyedIcon; 
 bool StrategicObjectComp::has3dMapIcon() const { return m_template->has3dMapIcon(); }
 int StrategicObjectComp::get3dMapIcon() const { return m_template->get3dMapIcon(); }
 bool StrategicObjectComp::isOnePiece() const { return m_template->getIsOnePiece(); }
+float StrategicObjectComp::getIconSize() const { return m_template->getIconSize(); }
 bool StrategicObjectComp::isPartOfDestroyedHolder() const
 {
     return m_holder && m_holder->getNrDestroyedObjects() > 0;

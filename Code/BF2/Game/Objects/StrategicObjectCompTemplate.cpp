@@ -16,6 +16,11 @@ namespace dice { namespace hfe { extern hud::BF2HudManager* hudManager; } }
 
 namespace dice { namespace hfe { namespace world {
 
+namespace {
+// The retail map icon size, which Bf2MenuMapNode hard-coded before iconSize existed.
+const float kDefaultIconSize = 19.0f;
+}
+
 StrategicObjectCompTemplate::StrategicObjectCompTemplate()
     : m_refCount(1), m_mapIcon3D(-1), m_isOnePiece(false)
 {
@@ -25,6 +30,7 @@ StrategicObjectCompTemplate::StrategicObjectCompTemplate()
     m_intactIcon.assign("");
     m_destroyedIconPtr = 0;
     m_intactIconPtr = 0;
+    m_iconSize = kDefaultIconSize;   // [CHOSEN, not recovered]
 }
 StrategicObjectCompTemplate::~StrategicObjectCompTemplate() {}
 void StrategicObjectCompTemplate::addRef() { ++m_refCount; }
@@ -107,6 +113,9 @@ bool StrategicObjectCompTemplate::makeScript(io::IStream* stream)
         out << "ObjectTemplate.StrategicObject.3dMapIcon " << m_mapIcon3D << std::endl;
     if (m_isOnePiece)
         out << "ObjectTemplate.StrategicObject.isOnePiece " << m_isOnePiece << std::endl;
+    // [CHOSEN, not recovered] Omitted at the default so retail-loadable output is unchanged.
+    if (m_iconSize != kDefaultIconSize)
+        out << "ObjectTemplate.StrategicObject.iconSize " << m_iconSize << std::endl;
     const std::string text = out.str();
     return stream->write(text.c_str(), static_cast<unsigned int>(text.size())) == text.size();
 }
