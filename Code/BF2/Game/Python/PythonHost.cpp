@@ -966,6 +966,8 @@ PyObject* sgl_sendRankEvent(PyObject*, PyObject*);
 PyObject* sgl_sendHudEvent(PyObject*, PyObject*);
 PyObject* sgl_sendTextMessage(PyObject*, PyObject*);
 PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
+PyObject* sgl_pickUpKit(PyObject*, PyObject*);              //   [CHOSEN, not recovered]
+PyObject* sgl_giveKit(PyObject*, PyObject*);                //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
@@ -1688,6 +1690,88 @@ PyObject* sgl_kickPlayer(PyObject*, PyObject* args)
     return Py_None;
 }
 
+namespace {
+// [CHOSEN, not recovered] The player's soldier for sgl_pickUpKit / sgl_giveKit. Raises RuntimeError
+// and returns null when there is no such player or the soldier cannot hold items.
+world::IObject* kitReceivingSoldier(int playerId, world::IPlayer*& player)
+{
+    player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+    world::IObject* const soldier = player->getDefaultVehicle();
+    if (!soldier || !soldier->queryInterface(world::IID_IItemContainerObject))
+    {
+        PyErr_SetString(PyExc_RuntimeError, "the player's soldier cannot pick up items");
+        return 0;
+    }
+    return soldier;
+}
+}
+
+// [CHOSEN, not recovered] Project Reality's forced kit pickup; not a retail host method.
+// host.sgl_pickUpKit(playerId, kit) makes the player's soldier pick up an existing kit, as walking
+// over it would. Raises RuntimeError when there is no such player or the soldier cannot hold items.
+PyObject* sgl_pickUpKit(PyObject*, PyObject* args)
+{
+    int playerId;
+    world::IObject* kit = 0;
+    if (py_arg<int>(args, 0, playerId) + py_arg<world::IObject*>(args, 1, kit))
+        return 0;
+
+    world::IPlayer* player = 0;
+    world::IObject* const soldier = kitReceivingSoldier(playerId, player);
+    if (!soldier)
+        return 0;
+
+    gameLogic->handlePickup(kit, player, soldier, true);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's kit request; not a retail host method.
+// host.sgl_giveKit(playerId, kitTemplateName) creates a kit of that template and has the player's
+// soldier pick it up, as ServerGameLogic::getNewKit does for the selected kit. Returns False when
+// the player cannot take a kit now (dead, man-down, or the soldier is inside a vehicle). Raises
+// RuntimeError for an unknown player or a template that is not a kit.
+PyObject* sgl_giveKit(PyObject*, PyObject* args)
+{
+    int playerId;
+    std::string templateName;
+    if (py_arg<int>(args, 0, playerId) + py_arg<std::string>(args, 1, templateName))
+        return 0;
+
+    world::IPlayer* player = 0;
+    world::IObject* const soldier = kitReceivingSoldier(playerId, player);
+    if (!soldier)
+        return 0;
+
+    world::IObjectTemplate* const objectTemplate =
+        world::objectTemplateManager->getTemplate(templateName);
+    void* const kitTemplate = objectTemplate
+        ? objectTemplate->queryImplementation(world::CID_KitTemplate) : 0;
+    if (!kitTemplate)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "not a kit template");
+        return 0;
+    }
+
+    if (!player->getIsAlive() || player->getIsManDown() || soldier->getParent())
+        return PyInt_FromLong(0);
+
+    Vec3 zero;
+    zero.x = zero.y = zero.z = 0.0f;
+    world::IObject* const kit = game->createObjectOnAllClients(
+        static_cast<const world::IObjectTemplate*>(kitTemplate), zero, zero, true, 0, 0);
+    if (!kit)
+        return PyInt_FromLong(0);
+
+    gameLogic->handlePickup(kit, player, soldier, true);
+    return PyInt_FromLong(1);
+}
+
 // [CHOSEN, not recovered] Project Reality's anti-air override; not a retail host method.
 // host.sgl_disableExplosionLatencyComp(templateName): explosions of projectiles with this template
 // skip latency compensation, and the projectile is removed two ticks later.
@@ -2100,6 +2184,8 @@ PyMethodDef method_table[] =
     { "sgl_sendHudEvent",            sgl_sendHudEvent,                   METH_VARARGS, 0 },
     { "sgl_sendTextMessage",         sgl_sendTextMessage,                METH_VARARGS, 0 },
     { "sgl_kickPlayer",              sgl_kickPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_pickUpKit",               sgl_pickUpKit,                      METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_giveKit",                 sgl_giveKit,                        METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
