@@ -38,6 +38,37 @@ extern OldConsole* g_executingConsole;       // ds:0x8AC3C88 - see handleCommand
 // Shared mutable output sink for callers that discard console output.
 std::string Console::ignoredString_;
 
+namespace {
+
+// [CHOSEN interim] Per-depth block state for handleCommand: if/elseIf/else branches, beginRem and
+// beginNoExecution. Retail keeps it in each script's Level; move it there when the Level's
+// [UNRESOLVED] tail fields are identified.
+const int kMaxBlockDepth = 10;
+struct BranchState { bool executing; bool branchTaken; int skipNesting; };
+std::vector<BranchState> s_branch[kMaxBlockDepth + 1];
+int s_remDepth[kMaxBlockDepth + 1];
+int s_noExecDepth[kMaxBlockDepth + 1];
+
+int blockStateIndex(int depth)
+{
+    return (depth >= 0 && depth <= kMaxBlockDepth) ? depth : 0;
+}
+
+// [CHOSEN, not recovered] Ends the block state of a finished script's depth. Retail's state lives
+// in the script's own Level, so a block a script leaves open (PR's us_jet_a10a_sp.tweak ends inside
+// a beginrem) dies with it. Kept per depth, it leaked into the next script at that depth and turned
+// a whole level Init.con into a comment.
+void clearBlockState(int depth)
+{
+    if (depth < 1 || depth > kMaxBlockDepth)   // deeper scripts share index 0 with the top level
+        return;
+    s_branch[depth].clear();
+    s_remDepth[depth] = 0;
+    s_noExecDepth[depth] = 0;
+}
+
+} // namespace
+
 // Evaluates a console expression and writes a diagnostic to error on invalid syntax.
 // Equality compares strings; ordering uses atof; boolean operations use atoi.
 // Unary negation arrives as lhs="!" or "not", op=operand and an empty rhs.
@@ -390,17 +421,12 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
         return 1;
 
     // Handles conditional branches and script execution. Skipped branches only process nesting keywords.
-    // [CHOSEN interim] Branch state is stored by parser depth; move it into Level when its [UNRESOLVED] tail fields are identified.
+    // Branch, comment and no-execution state is per depth; see s_branch above.
     {
-        struct BranchState { bool executing; bool branchTaken; int skipNesting; };
-        static std::vector<BranchState> s_branch[10 + 1];
-        std::vector<BranchState>& stack = s_branch[(m_depth >= 0 && m_depth <= 10) ? m_depth : 0];
+        std::vector<BranchState>& stack = s_branch[blockStateIndex(m_depth)];
 
         // Comment and no-execution blocks skip statements and support nested begin/end pairs.
-        // [CHOSEN interim] Their counters are stored by parser depth until the Level fields are identified.
-        static int s_remDepth[10 + 1];
-        static int s_noExecDepth[10 + 1];
-        const int levelIdx = (m_depth >= 0 && m_depth <= 10) ? m_depth : 0;
+        const int levelIdx = blockStateIndex(m_depth);
         int& remDepth    = s_remDepth[levelIdx];
         int& noExecDepth = s_noExecDepth[levelIdx];
 
@@ -1670,7 +1696,10 @@ bool OldConsole::run(const std::string& filePath,
         // Deliberate robustness against malformed content, and it is why one bad .con cannot
         // permanently corrupt the console's nesting state.
         while (savedDepth < m_depth)
+        {
+            clearBlockState(m_depth);          // [CHOSEN, not recovered] see clearBlockState
             decDepth();
+        }
 
         delete[] text;
     }
