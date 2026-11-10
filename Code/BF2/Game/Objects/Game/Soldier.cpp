@@ -3860,6 +3860,10 @@ void Soldier::handlePlayerInput(IPlayer* player, const io::PlayerInput& input,
 
     // Moving drives the body immediately and transfers an existing stationary side-look into the
     // restoration accumulator. Stationary input moves only the camera until the side limit is met.
+    // [CHOSEN, not recovered] Ekiso's frame-skip fix for Project Reality: at the side limit retail
+    // turns the body by this tick's input and also keeps it in the side-look that the pending turn
+    // pays out again later, so the body turns twice. Now an input beyond soldier-lookSideRestore
+    // turns the body at once and leaves the side-look; a smaller one waits for the pending turn.
     if (std::fabs(forwardAxis) > 0.01f)
     {
         if (m_lookLeftRightAngle != 0.0f)
@@ -3871,16 +3875,32 @@ void Soldier::handlePlayerInput(IPlayer* player, const io::PlayerInput& input,
         if (m_lookLeftRightAngle >= lookLimit)
         {
             if (vehicle)
+            {
                 m_lookLeftRightAngle = lookLimit;
+            }
             else
+            {
                 m_float214 = m_lookLeftRightAngle;
+                if (yawDelta > g_maxTurnRatePerTick)
+                    m_lookLeftRightAngle -= yawDelta;
+                else
+                    appliedYaw = 0.0f;
+            }
         }
         else if (m_lookLeftRightAngle <= -lookLimit)
         {
             if (vehicle)
+            {
                 m_lookLeftRightAngle = -lookLimit;
+            }
             else
+            {
                 m_float214 = m_lookLeftRightAngle;
+                if (-yawDelta > g_maxTurnRatePerTick)
+                    m_lookLeftRightAngle -= yawDelta;
+                else
+                    appliedYaw = 0.0f;
+            }
         }
         else
         {
