@@ -290,6 +290,7 @@ PyObject* object_pco_getIsWreck(PyObject*, PyObject*);
 PyObject* object_pco_getTeam(PyObject*, PyObject*);
 PyObject* object_cp_getParam(PyObject*, PyObject*);
 PyObject* object_cp_setParam(PyObject*, PyObject*);
+PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -310,6 +311,9 @@ PyMethodDef meth_pco_getIsWreck     = { "getIsWreck",         object_pco_getIsWr
 PyMethodDef meth_pco_getTeam        = { "getTeam",            object_pco_getTeam,        METH_VARARGS, 0 };
 PyMethodDef meth_cp_getParam        = { "cp_getParam",        object_cp_getParam,        METH_VARARGS, 0 };
 PyMethodDef meth_cp_setParam        = { "cp_setParam",        object_cp_setParam,        METH_VARARGS, 0 };
+PyMethodDef meth_projectile_setTimeToLive
+                                    = { "setTimeToLive",      object_projectile_setTimeToLive,
+                                                                                         METH_VARARGS, 0 };
 
 // Adds common methods and capability-specific methods/flags to a Python object.
 // Armor uses the component field; PCO and control-point capabilities use interface
@@ -356,7 +360,28 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     }
     PyObject_SetAttrString(instance, "isControlPoint", PyInt_FromLong(isCp));
 
+    // [CHOSEN, not recovered] Project Reality's projectile lifetime method; not in retail.
+    if (o->queryInterface(world::IID_IProjectileObject))
+        addSingleMethod(instance, &meth_projectile_setTimeToLive);
+
     return true;        // always
+}
+
+// [CHOSEN, not recovered] projectile.setTimeToLive(seconds): the projectile removes itself after
+// the given time, through the template message 29 GenericProjectile posts for its own lifetime.
+PyObject* object_projectile_setTimeToLive(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1)
+        return 0;
+
+    world::objectManager->postMessage(obj, static_cast<world::TemplateMessage>(29),
+                                      static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.
