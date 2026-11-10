@@ -950,6 +950,7 @@ PyObject* sgl_sendMedalEvent(PyObject*, PyObject*);
 PyObject* sgl_sendRankEvent(PyObject*, PyObject*);
 PyObject* sgl_sendHudEvent(PyObject*, PyObject*);
 PyObject* sgl_sendTextMessage(PyObject*, PyObject*);
+PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
 PyObject* sgl_getSettingsBool(PyObject*, PyObject*);
@@ -1642,6 +1643,35 @@ PyObject* gl_sendEndOfRoundData(PyObject*, PyObject* args)
     return Py_None;
 }
 
+// [CHOSEN, not recovered] Project Reality's kick with a reason; not a retail host method.
+// host.sgl_kickPlayer(playerId, reason) queues the kick as admin.kickPlayer does, but with
+// disconnect reason 34, whose text the client shows. The text goes out capped at 200 characters.
+// Raises RuntimeError when there is no server or no such player.
+PyObject* sgl_kickPlayer(PyObject*, PyObject* args)
+{
+    int playerId;
+    std::string reason;
+    if (py_arg<int>(args, 0, playerId) + py_arg<std::string>(args, 1, reason))
+        return 0;
+
+    IGameServer* const server = game
+        ? static_cast<IGameServer*>(game->queryInterface(IID_IGameServer)) : 0;
+    if (!server)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "not a server");
+        return 0;
+    }
+    if (!world::playerManager->getPlayerFromId(playerId))
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    server->kickPlayer(playerId, static_cast<io::PResult>(34), reason);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 // pers_getStatsKeyVal - ELF 0x8159A60 (355 B), PE 0x532BD0 (227 B). This does not start a backend
 // request: it reads map zero from the current persistence object that a completed request published
 // on GameServer. The error text is part of the Python contract.
@@ -2036,6 +2066,7 @@ PyMethodDef method_table[] =
     { "sgl_sendRankEvent",           sgl_sendRankEvent,                  METH_VARARGS, 0 },
     { "sgl_sendHudEvent",            sgl_sendHudEvent,                   METH_VARARGS, 0 },
     { "sgl_sendTextMessage",         sgl_sendTextMessage,                METH_VARARGS, 0 },
+    { "sgl_kickPlayer",              sgl_kickPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
     { "sgl_getSettingsBool",         sgl_getSettingsBool,                METH_VARARGS, 0 },
