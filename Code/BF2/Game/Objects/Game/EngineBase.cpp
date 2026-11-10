@@ -3,6 +3,7 @@
 #include "EngineBase.h"
 #include "../GameLogicComp/IArmorGLComp.h"        // isSendingMessage - message 24
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <string>
@@ -248,6 +249,16 @@ void EngineBase::handlePlayerInput(IPlayer* player, const io::PlayerInput& input
 
         if (m_template->m_remoteEngineInput != io::PINone)
             m_rotationInput.x = readEngineMappedInput(input, m_template->m_remoteEngineInput);
+
+        // [CHOSEN, not recovered] Project Reality's speedhack guard: a c_ETNewCar2 engine accepts
+        // input only within [-1, 1]. PR's scripts polled these values and kicked the driver; a
+        // client can only exceed the range by modifying its input, so it is clamped instead.
+        if (m_template->getEngineType() == 194)
+        {
+            float* const axes = &m_rotationInput.x;
+            for (int axis = 0; axis < 3; ++axis)
+                axes[axis] = std::max(-1.0f, std::min(1.0f, axes[axis]));
+        }
 
         if (m_template->getAccumulate() != 0.0f)
             accumulate(player, m_rotationInput, dt);
