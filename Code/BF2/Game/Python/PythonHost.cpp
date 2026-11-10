@@ -1932,6 +1932,9 @@ const ScriptEventMapEntry scriptEventMap[] =
     { "BeginRound",                 36 },  { "EndRound",                  37 },
     { "RemoteCommand",              38 },  { "ChatMessage",               39 },
     { "ValidatePlayerNameResponse", 40 },  { "SpottedMessageSent",        41 },
+    // [CHOSEN, not recovered] Project Reality event, not in retail: Player::setSpawnGroup's
+    // (playerId, group).
+    { "PlayerChangeSpawnGroup",     42 },
     { 0,                             0 },
 };
 
@@ -2180,8 +2183,9 @@ bool PythonHost::initialize(bool minimal)
             return false;
         }
 
-        // THE magic 42 - see the block above.
-        d->m_vector28.resize(42);                        // +0x28, indexed by ScriptEvent
+        // THE magic 42 - see the block above. [CHOSEN, not recovered] 43 here: one more for
+        // PlayerChangeSpawnGroup.
+        d->m_vector28.resize(43);                        // +0x28, indexed by ScriptEvent
 
         PyObject* const bf2Dict = PyModule_GetDict(d->m_bf2Module);
 
