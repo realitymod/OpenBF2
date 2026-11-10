@@ -19,6 +19,7 @@
 #include "../IGame.h"                   // persistence wrappers query IGameServer
 #include "../IGameServer.h"
 #include "../GameLogic/ServerGameLogic.h" // pers_plrSetUnlocks
+#include "../GameLogic/GameLogicExplosion.h" // [CHOSEN, not recovered] sgl_disableExplosionLatencyComp
 #include "../Persistence/PlayerUnlocks.h"
 #include "../Persistence/PlayerStats.h"
 #include "../Persistence/PlayerAwards.h"
@@ -965,6 +966,7 @@ PyObject* sgl_sendRankEvent(PyObject*, PyObject*);
 PyObject* sgl_sendHudEvent(PyObject*, PyObject*);
 PyObject* sgl_sendTextMessage(PyObject*, PyObject*);
 PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
+PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
 PyObject* sgl_getSettingsBool(PyObject*, PyObject*);
@@ -1686,6 +1688,20 @@ PyObject* sgl_kickPlayer(PyObject*, PyObject* args)
     return Py_None;
 }
 
+// [CHOSEN, not recovered] Project Reality's anti-air override; not a retail host method.
+// host.sgl_disableExplosionLatencyComp(templateName): explosions of projectiles with this template
+// skip latency compensation, and the projectile is removed two ticks later.
+PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject* args)
+{
+    std::string templateName;
+    if (py_arg<std::string>(args, 0, templateName))
+        return 0;
+
+    world::GameLogicExplosion::disableLatencyCompensationFor(templateName);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 // pers_getStatsKeyVal - ELF 0x8159A60 (355 B), PE 0x532BD0 (227 B). This does not start a backend
 // request: it reads map zero from the current persistence object that a completed request published
 // on GameServer. The error text is part of the Python contract.
@@ -2084,6 +2100,7 @@ PyMethodDef method_table[] =
     { "sgl_sendHudEvent",            sgl_sendHudEvent,                   METH_VARARGS, 0 },
     { "sgl_sendTextMessage",         sgl_sendTextMessage,                METH_VARARGS, 0 },
     { "sgl_kickPlayer",              sgl_kickPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
     { "sgl_getSettingsBool",         sgl_getSettingsBool,                METH_VARARGS, 0 },
