@@ -490,6 +490,10 @@ BF2_SV_SETTER(radioSpamInterval,        int, m_radioSpamInterval,     setRadioSp
 BF2_SV_SETTER(radioMaxSpamFlagCount,    int, m_radioMaxSpamFlagCount, setRadioMaxSpamFlagCount)
 BF2_SV_SETTER(radioBlockedDurationTime, int, m_radioBlockedDuration,  setRadioBlockedDurationTime)
 
+// [CHOSEN, not recovered] Project Reality's ghost-scope refresh interval; not a retail property.
+// Clamped to [1, 100]: 1 runs the scope pass whenever the connection's turn comes, 100 waits ~10 s.
+BF2_SV_CLAMPED(ghostScopeRefreshTicks, int, m_ghostScopeRefreshTicks, 1, 100)
+
 //  / 0x82AD88 -> ctors 0x4D74E0 / 0x4D76D0, executors 0x4D7630 / 0x4D7820. Both GET through
 // compound accessors and SET raw: getUseGlobalRank is `ranked && internet && field`, and
 // getUseGlobalUnlocks is `ranked || (internet && field)`. So on a LAN server both report false (rank)

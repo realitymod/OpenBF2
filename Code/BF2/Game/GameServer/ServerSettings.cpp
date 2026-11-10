@@ -130,6 +130,7 @@ void ServerSettings::save(std::ostream& out)
     out << "sv.radioBlockedDurationTime " << m_radioBlockedDuration << std::endl;
     out << "sv.numReservedSlots " << m_numReservedSlots << std::endl;
     out << "sv.friendlyFireWithMines " << m_friendlyFireWithMines << std::endl;
+    out << "sv.ghostScopeRefreshTicks " << m_ghostScopeRefreshTicks << std::endl;   // [CHOSEN, not recovered]
 }
 
 // Serializes settings and writes the script in one operation. Returns false for
@@ -213,6 +214,7 @@ ServerSettings::ServerSettings()
     m_useGlobalUnlocks             = true;     // +0xF7
     m_friendlyFireWithMines        = false;    // +0x100
     m_noVehicles                   = false;    // +0x101
+    m_ghostScopeRefreshTicks       = 4;        // [CHOSEN, not recovered] Project Reality's value
 
     setMaxPlayers(16);                         // the result string is discarded
 }

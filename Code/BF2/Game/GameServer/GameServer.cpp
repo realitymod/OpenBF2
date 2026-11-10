@@ -3094,8 +3094,11 @@ void GameServer::processGameStateAndSendPackets(float dt)
             if (recording || (ghostBudget > 0 && conn->m_timer20 <= 0.0f))
             {
                 --ghostBudget;
-                conn->updateGhostManager(viewDistance);              // the scope pass, 10 Hz max
-                conn->m_timer20 = 0.1f;                              // 10 Hz
+                conn->updateGhostManager(viewDistance);              // the scope pass
+                // [CHOSEN, not recovered] Retail reloads 0.1 s (10 Hz max); Project Reality
+                // lengthens it through sv.ghostScopeRefreshTicks.
+                conn->m_timer20 =
+                    static_cast<float>(serverSettings->m_ghostScopeRefreshTicks - 1) * 0.1f;
             }
             else
             {
