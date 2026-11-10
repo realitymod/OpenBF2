@@ -680,10 +680,12 @@ bool GameServer::loadPath(const std::string& levelName)
     m_mapInfo.setLevelPath(settings->stringGet("GSLevelDirectory", ""));
     m_mapInfo.setMapName(entry->name);
 
-    // ...and write the resolved values back into settings - GSMaxNrOfPlayers and GSGameMode now
-    // reflect the level actually being loaded.
-    int resolvedMax = m_mapInfo.getMaxNumberOfPlayers();
-    settings->intSet("GSMaxNrOfPlayers", resolvedMax);      // +0x14, by pointer
+    // ...and write the resolved game mode back into settings, so GSGameMode reflects the level
+    // actually being loaded. [CHOSEN, not recovered] Retail also writes the map's player count
+    // into GSMaxNrOfPlayers, which the player cap (createPlayerWithValidName) and the reserved-slot
+    // check read, so both used the map's size instead of sv.maxPlayers until Project Reality's
+    // scripts re-set sv.maxPlayers. GSMaxNrOfPlayers now keeps the server's value; the map's size
+    // stays in m_mapInfo.
     settings->stringSet("GSGameMode", m_mapInfo.getGameMode());
 
     // The path handed to GameLogic::load: GSLevelDirectory + levelName + "/". this is why load()
