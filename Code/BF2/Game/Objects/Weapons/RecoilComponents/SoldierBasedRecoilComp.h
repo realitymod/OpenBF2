@@ -43,7 +43,6 @@ public:
 private:
     void calcRecoil();
     float getRecoil(float recoil);
-    unsigned int tickAtRetailIndex(int index) const;
 
     /* +0x5C */ int m_soldierRefCount;
     // Retail deliberately leaves the complete ten-entry history untouched in its constructor.
@@ -99,8 +98,14 @@ public:
     const std::vector<float>& getRecoilGraph() const { return m_recoilGraph; }
     const std::vector<float>& getRecoilGraphGoBack() const { return m_recoilGraphGoBack; }
 
+    // [CHOSEN, not recovered] The recoilGraphFrameCount of templates created from now on, set by
+    // pr.setRecoilGraphSize. Project Reality uses 5; retail hard-codes 8.
+    static void setDefaultRecoilGraphFrameCount(int value) { s_defaultRecoilGraphFrameCount = value; }
+
 private:
     void calcRecoilVectors();
+
+    static int s_defaultRecoilGraphFrameCount;
 
     /* +0x08 */ int m_soldierRefCount;
     /* +0x0C */ RandomDistribution m_recoilForceUp;
