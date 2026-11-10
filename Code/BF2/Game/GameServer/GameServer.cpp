@@ -36,6 +36,8 @@
 #include "../GameEvents/VoipSessionEvent.h"    // createPlayer's unicast
 #include "../GameEvents/RadioMessageEvent.h"   // radio trio -> RadioMessageReceivedEvent seam
 #include "../GameEvents/EnterVehicleEvent.h"   // enterVehicle replication
+#include "../Objects/GenericFireArmTemplate.h"     // [CHOSEN, not recovered] proneOnlyReload
+#include "../Objects/Weapons/GenericFireArm.h"
 #include "../Objects/Game/Soldier.h"           // setLookUpDownAngle - the wired hook
 #include "../Objects/Game/KitTemplate.h"       // the two CreateKitEvent operands
 #include "../GameEvents/ExitVehicleEvent.h"    // exitVehicle replication
@@ -3345,6 +3347,49 @@ void GameServer::sendMissileMessageToOccupyingPlayers(
     }
 }
 
+namespace {
+// [CHOSEN, not recovered] Project Reality's proneOnlyReload rule, applied to a human player's input
+// before it is simulated: a reload of such a weapon is dropped unless the soldier is prone, and
+// while it reloads the soldier cannot leave prone (prone, crouch and jump are dropped).
+// [RETIRE-WHEN: rhooks-prone-reload] The PR client's rhooks (proneOnlyReload.cpp) predicts this
+// with inputs of exactly 1.0 and a non-zero reload state, so the server checks the same way.
+// Use pressed-input tests once old clients no longer connect.
+void applyProneOnlyReload(world::IPlayer* player, io::PlayerInput& input)
+{
+    float* const in = input.inputs;
+    const bool reload = in[io::PIReload] == 1.0f;
+    const bool poseChange = in[io::PILie] == 1.0f || in[io::PICrouch] == 1.0f
+                         || in[io::PIAction] == 1.0f;
+    if (!reload && !poseChange)
+        return;
+
+    world::IObject* const vehicle = player->getVehicle();
+    if (!vehicle || vehicle->getTemplate()->getClassID() != world::CID_SoldierTemplate)
+        return;
+    world::Soldier* const soldier = static_cast<world::Soldier*>(vehicle);
+
+    world::IObject* const weapon = soldier->getActiveWeapon(0);
+    if (!weapon || weapon->getTemplate()->getClassID() != world::CID_GenericFireArmTemplate)
+        return;
+    if (!static_cast<const world::GenericFireArmTemplate*>(weapon->getTemplate())->m_proneOnlyReload)
+        return;
+
+    const bool prone = soldier->getPose() == world::SoldierPose_Prone;
+    if (reload)
+    {
+        if (!prone)
+            in[io::PIReload] = 0.0f;
+        return;
+    }
+    if (prone && static_cast<world::GenericFireArm*>(weapon)->getReloadState() != 0)
+    {
+        in[io::PILie] = 0.0f;
+        in[io::PICrouch] = 0.0f;
+        in[io::PIAction] = 0.0f;
+    }
+}
+} // namespace
+
 // Consumes one player action or replays the last input for up to 30 empty-queue ticks
 // before using neutral input. Queued actions use their own stamp; replay uses the
 // buffer index plus one. Repeated getVehicle calls must remain separate because
@@ -3400,6 +3445,7 @@ bool GameServer::simulatePlayerUpdate(world::IPlayer* player, float dt)
             buffer->m_entries.erase(buffer->m_entries.begin());
             buffer->m_replayCount = 0;                  // a real action resets the run
         }
+        applyProneOnlyReload(player, input);            // [CHOSEN, not recovered]
         chosen = &input;
     }
 
