@@ -2801,10 +2801,14 @@ bool PythonHost::initializeGameMode(const std::string& gameMode)
     deadScript << "game.gamemodes." << modeName << ".init()\n";
 
     std::string moduleName = std::string("game.gamemodes.") + modeName;
+    // [CHOSEN, not recovered] Import and init failures are reported as Error, not retail's Log. The
+    // dedicated server opens no log file, so a Log entry is lost and the operator saw only
+    // GameServer's generic "failed to initialize gamemode"; as an Error the Python traceback is the
+    // fatal message. GameServer stops on this failure anyway, so only the reported text changes.
     PyObject* module = PyImport_ImportModule(const_cast<char*>(moduleName.c_str()));
     if (!module)
     {
-        Debug(DEBUGTYPE_8, "Game/Python/PythonHost.cpp", 369)
+        Debug(DEBUGTYPE_6, "Game/Python/PythonHost.cpp", 369)
             << "couldn't import game mode " << modeName << ": " << getExceptionText();
         return false;
     }
@@ -2823,7 +2827,7 @@ bool PythonHost::initializeGameMode(const std::string& gameMode)
     PyObject* result = PyObject_CallFunction(init, 0);
     if (!result)
     {
-        Debug(DEBUGTYPE_8, "Game/Python/PythonHost.cpp", 383)
+        Debug(DEBUGTYPE_6, "Game/Python/PythonHost.cpp", 383)
             << "python game mode " << modeName << " failed to initialize: " << getExceptionText();
         Py_XDECREF(init);
         Py_XDECREF(module);
