@@ -204,7 +204,8 @@ void destroyVc71Map(vc71::map_layout& map, unsigned int nodeSize)
 }
 
 const float kInverseTextureWidth  = 0.001953125f;    // flt_101E14C4 = 1/512
-const float kInverseTextureHeight = 0.0009765625f;   // flt_10221E20 = 1/1024
+// [CHOSEN, not recovered] Retail's flt_10221E20 is 1/1024; it follows TextureHeight.
+const float kInverseTextureHeight = 1.0f / NameTagRenderer::TextureHeight;
 
 } // anonymous namespace
 
@@ -392,7 +393,7 @@ void NameTagRenderer::onRenderPathActivated(int path)
     else
         dx9rend::textureAddRef(s_arrowTexture);                      // shared table slot +0x08
 
-    // the name atlas: 512 x 1024 A8R8G8B8, one mip, usage 0, D3DPOOL_DEFAULT, recreate mode on
+    // the name atlas: 512 x TextureHeight A8R8G8B8, one mip, usage 0, D3DPOOL_DEFAULT, recreate mode on
     // (sub_10017E40 swaps the recreate-mode byte; the image keeps only AL and pushes the whole
     // dword back, whose upper bytes the setter ignores.)
     const int savedRecreateMode = dx9rend::textureManagerSwapRecreateMode(1);
@@ -454,7 +455,7 @@ void NameTagRenderer::onRenderPathActivated(int path)
         fillFullQuad(arrow, 1.0f, 1.0f);
     dx9rend::vertexBufferUnlock(m_arrowVertexBuffer);
 
-    // The whole 64-record block, then every vertex's blendindices.x = its slot (for m_slotCount
+    // The whole SlotCapacity-record block, then every vertex's blendindices.x = its slot (for m_slotCount
     // slots; the rest stay 0).
     std::memset(m_slots, 0, sizeof(m_slots));
     for (int slot = 0; slot < m_slotCount; ++slot)

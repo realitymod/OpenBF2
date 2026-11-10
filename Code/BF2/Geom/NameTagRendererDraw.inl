@@ -268,7 +268,7 @@ world::IPlayer* ntViewingPlayer()
     return ntManager()->getSpectatedPlayer();                        // +0x64
 }
 
-// getTransformations(int) - +0x38 - answers the renderer's 64 x Vec4 array (item->slot << 4 indexes
+// getTransformations(int) - +0x38 - answers the renderer's SlotCapacity x Vec4 array (item->slot << 4 indexes
 // it). The tree's INametagManager spells the return void* [UNRESOLVED]; the cast lives here only.
 inline const Vec4* ntTransformations(int type)
 {
