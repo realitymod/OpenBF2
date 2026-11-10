@@ -4151,12 +4151,8 @@ void Player::update(float deltaTime)
         if (getIsAlive())
         {
             updateAbility(deltaTime);                     // deltaTime is unused by the body
-            m_closeMineCheckTimer -= deltaTime;
-            if (m_closeMineCheckTimer <= 0.0f)
-            {
-                updateIsCloseToMine(deltaTime);
-                m_closeMineCheckTimer = 0.2f;
-            }
+            // [CHOSEN, not recovered] Project Reality turns off the close-to-mine warning. Retail
+            // runs updateIsCloseToMine here every 0.2 s on m_closeMineCheckTimer.
         }
         else
         {

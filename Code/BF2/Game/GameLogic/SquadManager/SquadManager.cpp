@@ -264,8 +264,8 @@ bool SquadManager::addToSquad(int teamId, int squadId, int playerId)
 }
 
 // addToSquad(int,int,int,int) - ELF 0x811CC20, 802 B / PE 0x45FE70. This is the admission gate:
-// living/man-down state, six-player cap, then private-squad invitation. Failure notifications and
-// their recipients are preserved exactly; the actual membership transition lives in Squad.
+// six-player cap, then private-squad invitation. Failure notifications and their recipients are
+// preserved exactly; the actual membership transition lives in Squad.
 bool SquadManager::addToSquad(int /*unused*/, int squadId, int playerId, int teamId)
 {
     world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
@@ -280,11 +280,8 @@ bool SquadManager::addToSquad(int /*unused*/, int squadId, int playerId, int tea
     if (!squad)
         return false;
 
-    if ((player->getScoreData()->m_field10 > 0 && !player->getIsAlive())
-        || player->getIsManDown())
-    {
-        return false;
-    }
+    // [CHOSEN, not recovered] Project Reality lets dead and man-down players join a squad. Retail
+    // refuses here a man-down player, and a dead one whose score record has m_field10 > 0.
 
     if (world::playerManager->getNrOfPlayersInSquad(teamId, squadId) > 5)
     {
