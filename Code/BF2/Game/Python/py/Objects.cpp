@@ -14,6 +14,8 @@
 #include "../../../IO/Console/Console.h"
 #include "../../../Math/Mat4.h"
 #include "../../../Math/Vec3.h"
+#include "../../../Physics/IPhysicsNode.h"
+#include "../../../Physics/SoldierPhysicsNode.h"
 #include "../../../Scene/Object/ObjectTypes/Base/ObjectTemplateManager.h"
 #include "../../../Scene/Object/ObjectManager.h"         // getAllObjectsFromGrid - the filter walk
 #include <cstdio>                                        // [TEMP] the wrapper-integrity probes
@@ -291,6 +293,9 @@ PyObject* object_pco_getTeam(PyObject*, PyObject*);
 PyObject* object_cp_getParam(PyObject*, PyObject*);
 PyObject* object_cp_setParam(PyObject*, PyObject*);
 PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -314,6 +319,21 @@ PyMethodDef meth_cp_setParam        = { "cp_setParam",        object_cp_setParam
 PyMethodDef meth_projectile_setTimeToLive
                                     = { "setTimeToLive",      object_projectile_setTimeToLive,
                                                                                          METH_VARARGS, 0 };
+PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getOnGround= { "getOnGround",        object_soldier_getOnGround,METH_VARARGS, 0 };
+
+namespace {
+
+// The object's physics node when it moves on its own, else 0 (no node, or a static one).
+world::IPhysicsNode* dynamicPhysicsNode(world::IObject* obj)
+{
+    world::IPhysicsNode* node =
+        static_cast<world::IPhysicsNode*>(world::object_detail::LayoutAccess::physicsNode(obj));
+    return (node && node->getIsMobile()) ? node : 0;
+}
+
+} // namespace
 
 // Adds common methods and capability-specific methods/flags to a Python object.
 // Armor uses the component field; PCO and control-point capabilities use interface
@@ -364,6 +384,18 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     if (o->queryInterface(world::IID_IProjectileObject))
         addSingleMethod(instance, &meth_projectile_setTimeToLive);
 
+    // [CHOSEN, not recovered] Project Reality's physics methods; not in retail.
+    long hasDynamicPhysics = 0;
+    if (dynamicPhysicsNode(obj))
+    {
+        addSingleMethod(instance, &meth_getVelocity);
+        addSingleMethod(instance, &meth_setVelocity);
+        if (o->queryInterface(world::IID_ISoldier))
+            addSingleMethod(instance, &meth_soldier_getOnGround);
+        hasDynamicPhysics = 1;
+    }
+    PyObject_SetAttrString(instance, "hasDynamicPhysics", PyInt_FromLong(hasDynamicPhysics));
+
     return true;        // always
 }
 
@@ -382,6 +414,51 @@ PyObject* object_projectile_setTimeToLive(PyObject*, PyObject* args)
                                       static_cast<float>(seconds));
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+// [CHOSEN, not recovered] obj.getVelocity(): the physics node's positional speed, (0, 0, 0) while
+// the object is attached to a parent.
+PyObject* object_getVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return to_py(dynamicPhysicsNode(obj)->getPositionalSpeed());
+}
+
+// [CHOSEN, not recovered] obj.setVelocity((x, y, z)): wakes the physics node, then sets its
+// positional speed, clamped to the engine's maximum.
+PyObject* object_setVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    Vec3 v;
+    v.x = v.y = v.z = 0.0f;
+
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<Vec3>(args, 1, v);
+    if (e0 + e1)
+        return 0;
+
+    world::IPhysicsNode* node = dynamicPhysicsNode(obj);
+    node->setIsAwake();
+    node->setPositionalSpeed(v);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getOnGround(): 1 when the soldier touched something since the
+// last physics update, else 0. Soldiers always get a SoldierPhysicsNode
+// (SimpleObjectTemplate::buildMobilePhysicsNode).
+PyObject* object_soldier_getOnGround(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    world::SoldierPhysicsNode* node = static_cast<world::SoldierPhysicsNode*>(
+        world::object_detail::LayoutAccess::physicsNode(obj));
+    return PyInt_FromLong(node->getFrictionCount() != 0 ? 1 : 0);
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.
