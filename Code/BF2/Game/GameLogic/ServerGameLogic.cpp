@@ -3584,6 +3584,62 @@ bool ServerGameLogic::killPlayer(world::IPlayer* player, bool a, bool b)
     return result;
 }
 
+// [CHOSEN, not recovered] See the header. Mirrors toggleEntryPoint's exit half: the seat's exit
+// check, the exit, the 1-second toggle stamp, the momentum hand-off and the AI notify. The
+// hand-off reads the speed modifier only from PlayerControlObject templates, where
+// toggleEntryPoint also reads it, out of bounds, from a ladder's.
+bool ServerGameLogic::exitVehicleForScript(world::IPlayer* player)
+{
+    typedef world::object_detail::LayoutAccess L;
+
+    world::IObject* const vehicle = player->getVehicle();
+    if (!vehicle || vehicle == player->getFreeCamera() || vehicle == player->getDefaultVehicle())
+        return false;
+
+    world::IPlayerControlObject* const pco = static_cast<world::IPlayerControlObject*>(
+        vehicle->queryInterface(world::IID_IPlayerControlObject));
+    if (!pco || !L::objectTemplate(vehicle)->queryInterface(world::IID_IPlayerControlObjectTemplate))
+        return false;
+    if (!pco->isAllowedToExit())
+        return false;
+    if (!game->exitVehicle(player, true, true))
+        return false;
+
+    static_cast<Player*>(player)->m_worldTime = static_cast<float>(WorldPref::getWorldTime());
+
+    world::IObject* const soldier = player->getVehicle();
+    if (L::objectTemplate(soldier)->getClassID() == world::CID_SoldierTemplate)
+    {
+        world::IPhysicsNode* const from =
+            static_cast<world::IPhysicsNode*>(L::physicsNode(world::getRootParent(vehicle)));
+        world::IPhysicsNode* const to = static_cast<world::IPhysicsNode*>(L::physicsNode(soldier));
+        if (from && to)
+        {
+            const world::IObjectTemplate* const vt = L::objectTemplate(vehicle);
+            float modifier = 0.7f;
+            if (vt->getClassID() == world::CID_PlayerControlObjectTemplate)
+                modifier = static_cast<const world::PlayerControlObjectTemplate*>(vt)
+                               ->m_positionalSpeedModifier;
+
+            const Vec3& speed = from->getPositionalSpeed();
+            Vec3 carried;
+            carried.x = modifier * speed.x;
+            carried.y = modifier * speed.y;
+            carried.z = modifier * speed.z;
+            to->setPositionalSpeed(carried);
+        }
+    }
+
+    if (ai::g_aiInstance && ai::aiInstance()->isInitialized())
+    {
+        AiPlayerExitPayload payload;
+        payload.playerId = player->getId();
+        payload.aiObject = L::aiObject(vehicle);
+        eventManager->postEvent(ECAI, 3, &payload, 0.0f);
+    }
+    return true;
+}
+
 // Finds the nearest loose kit within radius, excluding kits parented to soldiers.
 // Uses a squared-distance sentinel of 100000. An object's null template is allowed;
 // a parent's template is assumed valid.
