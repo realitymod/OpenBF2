@@ -24,6 +24,7 @@
 #include "../../../../Core/System.h"
 #include "../../../../Physics/HeightmapCluster.h"
 #include "../../../../Physics/IPhysicsNode.h"
+#include "../../../../Physics/LatencyCompensation.h"
 #include "../../../../Scene/Object/ObjectManager.h"
 #include "../../../../Scene/Object/PlayerManager.h"
 #include "../../../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h"
@@ -270,6 +271,46 @@ float unitRandom(Random& random)
     // signed-positive integer to float, then multiplies by 2^-24.
     const unsigned int raw = ((random.getRaw() >> 7) | 1u) + 1u;
     return static_cast<float>(static_cast<int>(raw)) * 0.000000059604645f;
+}
+
+// [CHOSEN, not recovered] Project Reality's gunner lag compensation; not in retail. A gunner sees
+// their vehicle where it was one latency ago, so a shot from a seat other than the vehicle root is
+// moved, turned and redirected as if the vehicle still had that past transform.
+// The driver's own weapons and vehicles without a latency history are left alone. Returns
+// `fired` itself when nothing changes, else `compensated`, so the uncompensated path keeps writing
+// through to the caller's matrix as retail does.
+const Mat4& compensateGunnerLatency(IObject* weapon, IPlayer* shooter, const Mat4& fired,
+                                    Mat4& compensated, Vec3& velocity)
+{
+    if (!shooter)
+        return fired;
+
+    IObject* const root = getRootParent(weapon);
+    IPlayerControlObject* const seat = findPlayerControlObject(weapon);
+    if (!seat || seat == root->queryInterface(IID_IPlayerControlObject))
+        return fired;
+
+    IPhysicsNode* const node =
+        static_cast<IPhysicsNode*>(object_detail::LayoutAccess::physicsNode(root));
+    if (!node || !node->hasLatencyCompensation())
+        return fired;
+
+    const float latency = LatencyCompensation::getLatency(shooter);
+    const Mat4 now = node->getAbsoluteTransformation();
+    const Mat4 lagged = node->getLatencyCompensatedTransformation(latency, 0);
+
+    Mat4 nowInverse;
+    nowInverse.setInverse(now);
+    Mat4 toLagged;
+    toLagged.mult(nowInverse, lagged);
+
+    compensated.mult(fired, toLagged);
+
+    const Vec3 v = velocity;
+    velocity.x = v.x * toLagged.m[0] + v.y * toLagged.m[4] + v.z * toLagged.m[8];
+    velocity.y = v.x * toLagged.m[1] + v.y * toLagged.m[5] + v.z * toLagged.m[9];
+    velocity.z = v.x * toLagged.m[2] + v.y * toLagged.m[6] + v.z * toLagged.m[10];
+    return compensated;
 }
 
 } // anonymous namespace
@@ -1003,9 +1044,13 @@ bool FireComp::launchProjectile(int index)
 // construction path shared by the ordinary, spawned, thrown and explosive fire components.  Its
 // repeated interface walks and template queries are intentional: both shipped ports preserve
 // them, along with the first-empty-seat weak entry and the tracer's second transform store.
-IObject* FireComp::setupProjectile(const Mat4& transform, Vec3& velocity)
+IObject* FireComp::setupProjectile(const Mat4& firedTransform, Vec3& velocity)
 {
     IPlayer* const player = firearm()->getPlayer();
+
+    Mat4 compensated;                                                    // [CHOSEN, not recovered]
+    const Mat4& transform =
+        compensateGunnerLatency(firearm(), player, firedTransform, compensated, velocity);
 
     IObjectTemplate* const secondaryTemplate =
         firearm()->getSecondaryProjectileTemplate();
