@@ -25,6 +25,8 @@
 // the typed interfaces that retired the raw slot views
 #include "../../Objects/IObject.h"
 #include "../../Objects/IPlayer.h"
+#include "../../Objects/IWeaponObject.h"
+#include "../../Objects/Game/SupplyObject.h"
 #include "../../Objects/IControlPoint.h"
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
@@ -296,6 +298,9 @@ PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, n
 PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
+PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
+PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
+PyObject* object_weapon_setHeat(PyObject*, PyObject*);             // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -322,6 +327,13 @@ PyMethodDef meth_projectile_setTimeToLive
 PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getOnGround= { "getOnGround",        object_soldier_getOnGround,METH_VARARGS, 0 };
+PyMethodDef meth_supply_getSupplyAmmo
+                                    = { "getSupplyAmmo",      object_supply_getSupplyAmmo,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_supply_setSupplyAmmo
+                                    = { "setSupplyAmmo",      object_supply_setSupplyAmmo,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_weapon_setHeat     = { "setHeat",            object_weapon_setHeat,     METH_VARARGS, 0 };
 
 namespace {
 
@@ -331,6 +343,12 @@ world::IPhysicsNode* dynamicPhysicsNode(world::IObject* obj)
     world::IPhysicsNode* node =
         static_cast<world::IPhysicsNode*>(world::object_detail::LayoutAccess::physicsNode(obj));
     return (node && node->getIsMobile()) ? node : 0;
+}
+
+bool isSupplyObject(world::IObject* obj)
+{
+    return world::object_detail::LayoutAccess::objectTemplate(obj)->getClassID()
+        == world::CID_SupplyObjectTemplate;
 }
 
 } // namespace
@@ -396,6 +414,15 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     }
     PyObject_SetAttrString(instance, "hasDynamicPhysics", PyInt_FromLong(hasDynamicPhysics));
 
+    // [CHOSEN, not recovered] Project Reality's supply crate and weapon heat methods; not in retail.
+    if (isSupplyObject(obj))
+    {
+        addSingleMethod(instance, &meth_supply_getSupplyAmmo);
+        addSingleMethod(instance, &meth_supply_setSupplyAmmo);
+    }
+    if (o->queryInterface(world::IID_IWeaponObject))
+        addSingleMethod(instance, &meth_weapon_setHeat);
+
     return true;        // always
 }
 
@@ -459,6 +486,51 @@ PyObject* object_soldier_getOnGround(PyObject*, PyObject* args)
     world::SoldierPhysicsNode* node = static_cast<world::SoldierPhysicsNode*>(
         world::object_detail::LayoutAccess::physicsNode(obj));
     return PyInt_FromLong(node->getFrictionCount() != 0 ? 1 : 0);
+}
+
+// [CHOSEN, not recovered] supply.getSupplyAmmo(): the crate's shared storage, the pool that
+// rearming and healing spill into.
+PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyFloat_FromDouble(static_cast<world::SupplyObject*>(obj)->getSharedStorage());
+}
+
+// [CHOSEN, not recovered] supply.setSupplyAmmo(amount): sets the crate's shared storage, raising a
+// negative amount to 0.
+PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double amount = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, amount);
+    if (e0 + e1)
+        return 0;
+
+    static_cast<world::SupplyObject*>(obj)->setSharedStorage(
+        amount < 0.0 ? 0.0f : static_cast<float>(amount));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] weapon.setHeat(heat): sets the weapon's heat, from which it cools down as
+// after firing.
+PyObject* object_weapon_setHeat(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double heat = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, heat);
+    if (e0 + e1)
+        return 0;
+
+    static_cast<world::IWeaponObject*>(obj->queryInterface(world::IID_IWeaponObject))
+        ->setHeat(static_cast<float>(heat));
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.
