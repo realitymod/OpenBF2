@@ -973,6 +973,7 @@ PyObject* sgl_pickUpKit(PyObject*, PyObject*);              //   [CHOSEN, not re
 PyObject* sgl_giveKit(PyObject*, PyObject*);                //   [CHOSEN, not recovered]
 PyObject* sgl_resetSquads(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
 PyObject* sgl_getSquadOrder(PyObject*, PyObject*);          //   [CHOSEN, not recovered]
+PyObject* sgl_killPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
@@ -1817,6 +1818,27 @@ PyObject* sgl_resetSquads(PyObject*, PyObject*)
     return Py_None;
 }
 
+// [CHOSEN, not recovered] Project Reality's admin and rule kills; not a retail host method.
+// host.sgl_killPlayer(playerId) kills the player outright, as the console suicide does but without
+// its PlayerKilled event: the player leaves any vehicle, ladder or zipline, cannot be revived, and
+// PlayerDeath fires. Returns False when the player is already dead. Raises RuntimeError for an
+// unknown player.
+PyObject* sgl_killPlayer(PyObject*, PyObject* args)
+{
+    int playerId;
+    if (py_arg<int>(args, 0, playerId))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    return PyInt_FromLong(gameLogic->killPlayer(player, true, true) ? 1 : 0);
+}
+
 // [CHOSEN, not recovered] Project Reality's squad order read; not a retail host method.
 // host.sgl_getSquadOrder(team, squad) returns (orderType, (x, y, z)) for the squad leader's
 // current order, or None when the squad has none (or squad is 0, no squad).
@@ -2257,6 +2279,7 @@ PyMethodDef method_table[] =
     { "sgl_giveKit",                 sgl_giveKit,                        METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_resetSquads",             sgl_resetSquads,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_getSquadOrder",           sgl_getSquadOrder,                  METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_killPlayer",              sgl_killPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
