@@ -30,6 +30,7 @@
 #include "../../Objects/Game/Soldier.h"
 #include "../../Objects/ISoldier.h"
 #include "../../Objects/ISpawnPoint.h"
+#include "../../../Animation/BoneAnimation/RagDoll.h"
 #include "../../Objects/IControlPoint.h"
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
@@ -309,6 +310,9 @@ PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, n
 PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject*);      // [CHOSEN, not recovered]
 PyObject* object_soldier_getPose(PyObject*, PyObject*);            // [CHOSEN, not recovered]
+PyObject* object_soldier_getRagdollParticlePositions(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_soldier_setRagdollDrag(PyObject*, PyObject*);     // [CHOSEN, not recovered]
+PyObject* object_soldier_clearRagdollDrag(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_getObjectId(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_spawnPoint_getSpawnGroup(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_pco_getPcoId(PyObject*, PyObject*);               // [CHOSEN, not recovered]
@@ -354,6 +358,15 @@ PyMethodDef meth_soldier_setStaminaRecovery
                                     = { "setStaminaRecovery", object_soldier_setStaminaRecovery,
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getPose    = { "getPose",            object_soldier_getPose,    METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getRagdollParticlePositions
+                                    = { "getRagdollParticlePositions",
+                                        object_soldier_getRagdollParticlePositions,      METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setRagdollDrag
+                                    = { "setRagdollDrag",     object_soldier_setRagdollDrag,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_soldier_clearRagdollDrag
+                                    = { "clearRagdollDrag",   object_soldier_clearRagdollDrag,
+                                                                                         METH_VARARGS, 0 };
 PyMethodDef meth_getObjectId        = { "getObjectId",        object_getObjectId,        METH_VARARGS, 0 };
 PyMethodDef meth_spawnPoint_getSpawnGroup
                                     = { "getSpawnGroup",      object_spawnPoint_getSpawnGroup,
@@ -471,6 +484,9 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_soldier_setStaminaDissipation);
         addSingleMethod(instance, &meth_soldier_setStaminaRecovery);
         addSingleMethod(instance, &meth_soldier_getPose);
+        addSingleMethod(instance, &meth_soldier_getRagdollParticlePositions);
+        addSingleMethod(instance, &meth_soldier_setRagdollDrag);
+        addSingleMethod(instance, &meth_soldier_clearRagdollDrag);
     }
 
     // [CHOSEN, not recovered] Project Reality's object id, spawn group and PCO id reads; not in retail.
@@ -663,6 +679,78 @@ PyObject* object_soldier_getPose(PyObject*, PyObject* args)
         return 0;
 
     return PyInt_FromLong(static_cast<long>(asSoldier(obj)->getPose()));
+}
+
+// [CHOSEN, not recovered] soldier.getRagdollParticlePositions(): a tuple of the ragdoll particles'
+// positions, or None while the soldier has no ragdoll.
+PyObject* object_soldier_getRagdollParticlePositions(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    anim::RagDoll* const ragDoll = asSoldier(obj)->getRagDoll();
+    if (!ragDoll)
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    const std::vector<anim::RagDoll::Particle>& particles = ragDoll->m_particles;
+    PyObject* const positions = PyTuple_New(static_cast<int>(particles.size()));
+    if (!positions)
+        return 0;
+    for (size_t i = 0; i < particles.size(); ++i)
+        PyTuple_SetItem(positions, static_cast<int>(i), to_py(particles[i].m_position));
+    return positions;
+}
+
+// [CHOSEN, not recovered] soldier.setRagdollDrag(particle, (x, y, z), acceleration, exponent): from
+// now on every ragdoll step pulls that particle toward the point with an acceleration of
+// acceleration * distance^exponent, until clearRagdollDrag or the ragdoll goes away. Returns 0
+// when the soldier has no ragdoll, else 1. Raises RuntimeError for a particle out of range.
+PyObject* object_soldier_setRagdollDrag(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    int particle = 0;
+    Vec3 target;
+    target.x = target.y = target.z = 0.0f;
+    double acceleration = 0.0;
+    double exponent = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<int>(args, 1, particle);
+    int e2 = py_arg<Vec3>(args, 2, target);
+    int e3 = py_arg<double>(args, 3, acceleration);
+    int e4 = py_arg<double>(args, 4, exponent);
+    if (e0 + e1 + e2 + e3 + e4)
+        return 0;
+
+    anim::RagDoll* const ragDoll = asSoldier(obj)->getRagDoll();
+    if (!ragDoll)
+        return PyInt_FromLong(0);
+    if (particle < 0 || static_cast<size_t>(particle) >= ragDoll->m_particles.size())
+    {
+        PyErr_SetString(PyExc_RuntimeError, "ragdoll particle out of range");
+        return 0;
+    }
+
+    ragDoll->setDrag(particle, target, static_cast<float>(acceleration),
+                     static_cast<float>(exponent));
+    return PyInt_FromLong(1);
+}
+
+// [CHOSEN, not recovered] soldier.clearRagdollDrag(): stops setRagdollDrag's pull, if any.
+PyObject* object_soldier_clearRagdollDrag(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    anim::RagDoll* const ragDoll = asSoldier(obj)->getRagDoll();
+    if (ragDoll)
+        ragDoll->clearDrag();
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // [CHOSEN, not recovered] obj.getObjectId(): the engine's object id, as console commands such as
