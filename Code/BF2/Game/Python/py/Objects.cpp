@@ -29,6 +29,7 @@
 #include "../../Objects/Game/SupplyObject.h"
 #include "../../Objects/Game/Soldier.h"
 #include "../../Objects/ISoldier.h"
+#include "../../Objects/ISpawnPoint.h"
 #include "../../Objects/IControlPoint.h"
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
@@ -308,6 +309,9 @@ PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, n
 PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject*);      // [CHOSEN, not recovered]
 PyObject* object_soldier_getPose(PyObject*, PyObject*);            // [CHOSEN, not recovered]
+PyObject* object_getObjectId(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_spawnPoint_getSpawnGroup(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_pco_getPcoId(PyObject*, PyObject*);               // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -350,6 +354,11 @@ PyMethodDef meth_soldier_setStaminaRecovery
                                     = { "setStaminaRecovery", object_soldier_setStaminaRecovery,
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getPose    = { "getPose",            object_soldier_getPose,    METH_VARARGS, 0 };
+PyMethodDef meth_getObjectId        = { "getObjectId",        object_getObjectId,        METH_VARARGS, 0 };
+PyMethodDef meth_spawnPoint_getSpawnGroup
+                                    = { "getSpawnGroup",      object_spawnPoint_getSpawnGroup,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_pco_getPcoId       = { "getPcoId",           object_pco_getPcoId,       METH_VARARGS, 0 };
 
 namespace {
 
@@ -463,6 +472,13 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_soldier_setStaminaRecovery);
         addSingleMethod(instance, &meth_soldier_getPose);
     }
+
+    // [CHOSEN, not recovered] Project Reality's object id, spawn group and PCO id reads; not in retail.
+    addSingleMethod(instance, &meth_getObjectId);
+    if (o->queryInterface(IID_ISpawnPoint))
+        addSingleMethod(instance, &meth_spawnPoint_getSpawnGroup);
+    if (isPco)
+        addSingleMethod(instance, &meth_pco_getPcoId);
 
     return true;        // always
 }
@@ -647,6 +663,40 @@ PyObject* object_soldier_getPose(PyObject*, PyObject* args)
         return 0;
 
     return PyInt_FromLong(static_cast<long>(asSoldier(obj)->getPose()));
+}
+
+// [CHOSEN, not recovered] obj.getObjectId(): the engine's object id, as console commands such as
+// Object.active take it.
+PyObject* object_getObjectId(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<long>(obj->getObjectId()));
+}
+
+// [CHOSEN, not recovered] spawnPoint.getSpawnGroup(): the spawn group players select to spawn here.
+PyObject* object_spawnPoint_getSpawnGroup(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(
+        static_cast<ISpawnPoint*>(obj->queryInterface(IID_ISpawnPoint))->getSpawnGroupId());
+}
+
+// [CHOSEN, not recovered] pco.getPcoId(): the seat's position in its vehicle, as the position-select
+// keys number it.
+PyObject* object_pco_getPcoId(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<world::IPlayerControlObject*>(
+        obj->queryInterface(world::IID_IPlayerControlObject))->getPcoId());
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.

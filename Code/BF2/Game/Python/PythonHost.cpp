@@ -49,6 +49,7 @@
 #include "../Objects/ISoldier.h"          // pmgr_p_get kit query
 #include "../Objects/Game/Kit.h"          // ISoldier::getKit -> IObject conversion
 #include "../GameLogic/SquadManager/ISquadManager.h" // pmgr_getCommander
+#include "../GameLogic/SquadManager/SquadOrder.h"    // sgl_getSquadOrder
 
 #include <algorithm>
 #include <iterator>
@@ -971,6 +972,7 @@ PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not re
 PyObject* sgl_pickUpKit(PyObject*, PyObject*);              //   [CHOSEN, not recovered]
 PyObject* sgl_giveKit(PyObject*, PyObject*);                //   [CHOSEN, not recovered]
 PyObject* sgl_resetSquads(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* sgl_getSquadOrder(PyObject*, PyObject*);          //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
@@ -1764,7 +1766,8 @@ PyObject* sgl_pickUpKit(PyObject*, PyObject* args)
 // host.sgl_giveKit(playerId, kitTemplateName) creates a kit of that template and has the player's
 // soldier pick it up, as ServerGameLogic::getNewKit does for the selected kit. Returns False when
 // the player cannot take a kit now (dead, man-down, or the soldier is inside a vehicle). Raises
-// RuntimeError for an unknown player or a template that is not a kit.
+// RuntimeError for an unknown player or a template that is not a kit. Stamps the player's kit time,
+// as getNewKit does.
 PyObject* sgl_giveKit(PyObject*, PyObject* args)
 {
     int playerId;
@@ -1798,6 +1801,7 @@ PyObject* sgl_giveKit(PyObject*, PyObject* args)
         return PyInt_FromLong(0);
 
     gameLogic->handlePickup(kit, player, soldier, true);
+    player->setKitTimeStamp(WorldPref::getWorldTime());
     return PyInt_FromLong(1);
 }
 
@@ -1811,6 +1815,29 @@ PyObject* sgl_resetSquads(PyObject*, PyObject*)
             squads->resetSquad(team, squad);
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's squad order read; not a retail host method.
+// host.sgl_getSquadOrder(team, squad) returns (orderType, (x, y, z)) for the squad leader's
+// current order, or None when the squad has none (or squad is 0, no squad).
+PyObject* sgl_getSquadOrder(PyObject*, PyObject* args)
+{
+    int team;
+    int squad;
+    if (py_arg<int>(args, 0, team) + py_arg<int>(args, 1, squad))
+        return 0;
+
+    ISquadInfo* const info = squad
+        ? static_cast<ISquadManager*>(squadManager)->getSquadInfo(team, squad) : 0;
+    const SquadOrder* const order = info ? info->getSquadOrders() : 0;
+    if (!order)
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    const Vec3& p = order->points[0];
+    return Py_BuildValue("(i(fff))", order->orderId, p.x, p.y, p.z);
 }
 
 // [CHOSEN, not recovered] Project Reality's anti-air override; not a retail host method.
@@ -2229,6 +2256,7 @@ PyMethodDef method_table[] =
     { "sgl_pickUpKit",               sgl_pickUpKit,                      METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_giveKit",                 sgl_giveKit,                        METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_resetSquads",             sgl_resetSquads,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_getSquadOrder",           sgl_getSquadOrder,                  METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
