@@ -259,6 +259,11 @@ public:
     // Requires a live used vehicle. The Kinamatic spelling is part of the original symbol name.
     IObjectTemplateComponent* findInverseKinamaticObject();
 
+    // [CHOSEN, not recovered] Script overrides of the sprint times enter() copies from the
+    // template, for Python's soldier.setStaminaDissipation/setStaminaRecovery.
+    void setSprintDissipationTime(float seconds) { m_sprintState.m_constant0 = seconds; }
+    void setSprintRecoverTime(float seconds)     { m_sprintState.m_constant1 = seconds; }
+
 private:
     // Fields without identified roles retain offset-based names.
     /* +0x148 */ int    m_refCount;                  // ctor 1 - ITS OWN, not Object's +0x84

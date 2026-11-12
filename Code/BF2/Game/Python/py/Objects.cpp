@@ -27,6 +27,8 @@
 #include "../../Objects/IPlayer.h"
 #include "../../Objects/IWeaponObject.h"
 #include "../../Objects/Game/SupplyObject.h"
+#include "../../Objects/Game/Soldier.h"
+#include "../../Objects/ISoldier.h"
 #include "../../Objects/IControlPoint.h"
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
@@ -301,6 +303,11 @@ PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, n
 PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_weapon_setHeat(PyObject*, PyObject*);             // [CHOSEN, not recovered]
+PyObject* object_soldier_getStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
+PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
+PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject*);      // [CHOSEN, not recovered]
+PyObject* object_soldier_getPose(PyObject*, PyObject*);            // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -334,6 +341,15 @@ PyMethodDef meth_supply_setSupplyAmmo
                                     = { "setSupplyAmmo",      object_supply_setSupplyAmmo,
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_weapon_setHeat     = { "setHeat",            object_weapon_setHeat,     METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getStamina = { "getStamina",         object_soldier_getStamina, METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStamina = { "setStamina",         object_soldier_setStamina, METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStaminaDissipation
+                                    = { "setStaminaDissipation", object_soldier_setStaminaDissipation,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStaminaRecovery
+                                    = { "setStaminaRecovery", object_soldier_setStaminaRecovery,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getPose    = { "getPose",            object_soldier_getPose,    METH_VARARGS, 0 };
 
 namespace {
 
@@ -343,6 +359,21 @@ world::IPhysicsNode* dynamicPhysicsNode(world::IObject* obj)
     world::IPhysicsNode* node =
         static_cast<world::IPhysicsNode*>(world::object_detail::LayoutAccess::physicsNode(obj));
     return (node && node->getIsMobile()) ? node : 0;
+}
+
+world::Soldier* asSoldier(world::IObject* obj)
+{
+    return static_cast<world::Soldier*>(
+        static_cast<world::ISoldier*>(obj->queryInterface(world::IID_ISoldier)));
+}
+
+// Raises RuntimeError and returns false when the value is negative.
+bool checkSprintTime(double seconds)
+{
+    if (seconds >= 0.0)
+        return true;
+    PyErr_SetString(PyExc_RuntimeError, "sprint time must not be negative");
+    return false;
 }
 
 bool isSupplyObject(world::IObject* obj)
@@ -422,6 +453,16 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     }
     if (o->queryInterface(world::IID_IWeaponObject))
         addSingleMethod(instance, &meth_weapon_setHeat);
+
+    // [CHOSEN, not recovered] Project Reality's soldier stamina and pose methods; not in retail.
+    if (o->queryInterface(world::IID_ISoldier))
+    {
+        addSingleMethod(instance, &meth_soldier_getStamina);
+        addSingleMethod(instance, &meth_soldier_setStamina);
+        addSingleMethod(instance, &meth_soldier_setStaminaDissipation);
+        addSingleMethod(instance, &meth_soldier_setStaminaRecovery);
+        addSingleMethod(instance, &meth_soldier_getPose);
+    }
 
     return true;        // always
 }
@@ -531,6 +572,81 @@ PyObject* object_weapon_setHeat(PyObject*, PyObject* args)
         ->setHeat(static_cast<float>(heat));
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getStamina(): sprint stamina, 0.0 to 1.0.
+PyObject* object_soldier_getStamina(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyFloat_FromDouble(asSoldier(obj)->getSprintStamina());
+}
+
+// [CHOSEN, not recovered] soldier.setStamina(stamina): sets sprint stamina, which the soldier's
+// networkable sends to clients. Raises RuntimeError outside 0.0 to 1.0.
+PyObject* object_soldier_setStamina(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double stamina = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, stamina);
+    if (e0 + e1)
+        return 0;
+
+    if (stamina < 0.0 || stamina > 1.0)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "stamina must be between 0 and 1");
+        return 0;
+    }
+    asSoldier(obj)->setSprintStamina(static_cast<float>(stamina));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.setStaminaDissipation(seconds): how long a full sprint lasts,
+// replacing the template's SprintDissipationTime until a player next enters the soldier, as on
+// spawn. Clients keep predicting with the template value. Raises RuntimeError when negative.
+PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1 || !checkSprintTime(seconds))
+        return 0;
+
+    asSoldier(obj)->setSprintDissipationTime(static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.setStaminaRecovery(seconds): how long stamina takes to recover,
+// replacing the template's SprintRecoverTime until a player next enters the soldier, as on spawn.
+// Clients keep predicting with the template value. Raises RuntimeError when negative.
+PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1 || !checkSprintTime(seconds))
+        return 0;
+
+    asSoldier(obj)->setSprintRecoverTime(static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getPose(): 0 standing, 1 crouching, 2 prone, 3 swimming.
+PyObject* object_soldier_getPose(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<long>(asSoldier(obj)->getPose()));
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.
