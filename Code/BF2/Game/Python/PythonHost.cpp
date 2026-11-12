@@ -975,6 +975,7 @@ PyObject* sgl_resetSquads(PyObject*, PyObject*);            //   [CHOSEN, not re
 PyObject* sgl_getSquadOrder(PyObject*, PyObject*);          //   [CHOSEN, not recovered]
 PyObject* sgl_killPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* sgl_exitVehicle(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* sgl_selectItem(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
@@ -1862,6 +1863,42 @@ PyObject* sgl_exitVehicle(PyObject*, PyObject* args)
         static_cast<ServerGameLogic*>(gameLogic)->exitVehicleForScript(player) ? 1 : 0);
 }
 
+// [CHOSEN, not recovered] Project Reality's forced weapon switch; not a retail host method.
+// host.sgl_selectItem(playerId, itemIndex) switches the player's soldier to the item in that slot
+// (1-9, the weapon-select keys) as the key would, through GameLogic::switchToWeaponFromIndex; the
+// soldier's networkable carries the switch to every client, its owner included. Returns True when
+// that item is now active, False when the player is not on foot or the slot holds nothing
+// selectable. Raises RuntimeError for an unknown player.
+PyObject* sgl_selectItem(PyObject*, PyObject* args)
+{
+    int playerId;
+    int itemIndex;
+    if (py_arg<int>(args, 0, playerId) + py_arg<int>(args, 1, itemIndex))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    world::IObject* const soldier = player->getDefaultVehicle();
+    if (!soldier || player->getVehicle() != soldier || !soldier->queryInterface(world::IID_ISoldier))
+        return PyInt_FromLong(0);
+
+    world::IPlayerControlObject* const pco = static_cast<world::IPlayerControlObject*>(
+        soldier->queryInterface(world::IID_IPlayerControlObject));
+    world::IObject* const active = pco->getActiveWeapon(0);
+    world::IItemObject* const activeItem = active
+        ? static_cast<world::IItemObject*>(active->queryInterface(world::IID_IItemObject)) : 0;
+    if (activeItem && activeItem->getItemIndex() == itemIndex)
+        return PyInt_FromLong(1);
+
+    return PyInt_FromLong(static_cast<GameLogic*>(gameLogic)
+        ->switchToWeaponFromIndex(pco, player, soldier, false, itemIndex) ? 1 : 0);
+}
+
 // [CHOSEN, not recovered] Project Reality's squad order read; not a retail host method.
 // host.sgl_getSquadOrder(team, squad) returns (orderType, (x, y, z)) for the squad leader's
 // current order, or None when the squad has none (or squad is 0, no squad).
@@ -2304,6 +2341,7 @@ PyMethodDef method_table[] =
     { "sgl_getSquadOrder",           sgl_getSquadOrder,                  METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_killPlayer",              sgl_killPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_exitVehicle",             sgl_exitVehicle,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_selectItem",              sgl_selectItem,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
