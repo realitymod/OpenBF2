@@ -4,6 +4,7 @@
 
 // Include Ids before IObjectTemplate so later extern declarations retain the constants' internal linkage.
 #include "ObjectTemplateManager.h"
+#include <algorithm>
 #include <cstdio>    // [TEMP] probe F - createTemplate failure tracer; retire with RW-97
 #include "../../../../Core/Ids.h"
 #include "../../../../Game/Objects/IObjectTemplate.h"     // [UNRESOLVED] true home; not attested
@@ -479,7 +480,13 @@ bool ObjectTemplateManager::deleteTemplate(IObjectTemplate* t)
 
     m_objTemplateNameHashes.remove(t->getName());      // Hash::remove, inlined at 0x83245f0
 
-    m_globalTemplateList.remove(t);
+    // [CHOSEN, not recovered] Project Reality: unlink only the first match. A template is listed
+    // once, and std::list::remove walked the whole list (tens of thousands of templates) on every
+    // delete, which made deleteAllNotUsed quadratic during map loads.
+    const std::list<IObjectTemplate*>::iterator listed =
+        std::find(m_globalTemplateList.begin(), m_globalTemplateList.end(), t);
+    if (listed != m_globalTemplateList.end())
+        m_globalTemplateList.erase(listed);
     m_objTemplateTree.erase(t->getId());
     m_workingFolders.erase(t->getId());
 
