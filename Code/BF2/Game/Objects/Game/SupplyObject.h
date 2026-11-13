@@ -57,6 +57,10 @@ public:
     int  updateTeamFromClosestCP();                  // gated on teamFromClosestCP.
                                                      // Returns the team stored by update().
 
+    // [CHOSEN, not recovered] The shared pool, for Python's supply.getSupplyAmmo/setSupplyAmmo.
+    float getSharedStorage() const     { return m_sharedStorage; }
+    void  setSharedStorage(float value) { m_sharedStorage = value; }
+
 private:
     // The networkable snapshots the landed byte directly in both ports. Use member access because
     // Bundle's native STL/layout differs from the retail ELF (+0x150) and PE (+0x168).

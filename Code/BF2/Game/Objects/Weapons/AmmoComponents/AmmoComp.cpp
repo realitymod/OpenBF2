@@ -604,18 +604,37 @@ bool AmmoComp::needsRefill()
     return m_magazines[0] < m_template->getMagSize();
 }
 
+// [CHOSEN, not recovered] Project Reality reads the template's ammoType as a rearm rate: -1 turns
+// rearming off, and N > 1 scales each refill by 100/N (50 rearms twice as fast, 200 half as fast).
+// The returned amount is scaled back, so the supply source is charged unscaled. testOnly calls,
+// which only ask whether a refill is possible, are not scaled.
+float AmmoComp::refillPercent(float percent, bool testOnly)
+{
+    const int rearmRate = m_template->getAmmoType();
+    if (rearmRate == -1)
+        return percent;
+    if (testOnly)
+        return refillPercentUnscaled(percent, true);
+
+    const float scale = rearmRate > 1 ? 100.0f / static_cast<float>(rearmRate) : 1.0f;
+    return refillPercentUnscaled(percent * scale, false) / scale;
+}
+
 // Accumulates fractional refill until whole rounds can be supplied; carry expires after 30 ticks.
 // Returns the value for the next weapon, whose units vary between input percent and integer leftovers.
 // testOnly returns zero when supply is possible without storing carry or the refill tick.
-float AmmoComp::refillPercent(float percent, bool testOnly)
+float AmmoComp::refillPercentUnscaled(float percent, bool testOnly)
 {
     float carry = m_refillCarry;
 
     if (!needsRefill())
         return percent;
 
-    if (m_lastRefillTick + kRefillCarryTicks <
-        static_cast<unsigned int>(WorldPref::getTickCount()))
+    // [CHOSEN, not recovered] Project Reality keeps a carry of half a round or more; retail drops
+    // any carry after 30 ticks.
+    if (carry < 0.5f
+        && m_lastRefillTick + kRefillCarryTicks <
+           static_cast<unsigned int>(WorldPref::getTickCount()))
     {
         carry = 0.0f;
     }

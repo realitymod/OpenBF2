@@ -37,6 +37,8 @@
 #include "../Common/ClientVoteManager.h"       // setTeam's local-human branch
 #include "../IGameLogic.h"                    // getBeforeSpawnCamera{Position,Direction} +0x20C/+0x210
 #include "../Objects/Game/KitTemplate.h"      // getUnlockLevel reads m_creationIndex raw (friend)
+#include "../Python/PythonHost.h"             // [CHOSEN, not recovered] setSpawnGroup's script event
+#include "../Python/PyRef.h"
 #include "../../Scene/Object/PlayerManager.h" // getLocalHumanPlayer - getCommanderCameraForPlayer
 #include "../../Geom/ParticleSystem/ParticleSystemManager.h" // typed gas-cloud manager/instance ABI
 
@@ -4151,12 +4153,8 @@ void Player::update(float deltaTime)
         if (getIsAlive())
         {
             updateAbility(deltaTime);                     // deltaTime is unused by the body
-            m_closeMineCheckTimer -= deltaTime;
-            if (m_closeMineCheckTimer <= 0.0f)
-            {
-                updateIsCloseToMine(deltaTime);
-                m_closeMineCheckTimer = 0.2f;
-            }
+            // [CHOSEN, not recovered] Project Reality turns off the close-to-mine warning. Retail
+            // runs updateIsCloseToMine here every 0.2 s on m_closeMineCheckTimer.
         }
         else
         {
@@ -5114,6 +5112,14 @@ void Player::handleInput(io::PlayerInput& input, float dt, unsigned int flags)
 void Player::setSpawnGroup(int group)
 {
     m_spawnGroup = group;                                            // +0xD4
+
+    // [CHOSEN, not recovered] Project Reality's spawn-group callback: the server tells scripts
+    // through PlayerChangeSpawnGroup. Plain ids, because this can run before PlayerConnect.
+    if (gameLogic->isServer())
+    {
+        python::PyRef args = python::buildArgs(m_playerId, group);
+        python::pythonHost()->handleEvent(static_cast<ScriptEvent>(42), args.get());
+    }
 }
 
 // Change team, posting the event before storing the new value, then clear the

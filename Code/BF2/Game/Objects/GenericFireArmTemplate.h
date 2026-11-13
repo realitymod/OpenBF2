@@ -154,6 +154,11 @@ public:
     // ... 1.0f here and 3.0f (0x40400000) below - all three are floats by ctor evidence.
     /* 512 */ float m_cannotFireTimer;               // was `_dword200`; ctor 1.0f
     /* 516 */ float m_crosshairFireTime;             // was `_dword204`; ctor 3.0f
+
+    // [CHOSEN, not recovered] Project Reality's ObjectTemplate.proneOnlyReload, appended past the
+    // retail layout: the weapon reloads only while prone, and its soldier cannot leave prone during
+    // the reload. Enforced on player input; see GameServer::simulatePlayerUpdate.
+    /* 520 */ bool  m_proneOnlyReload;
 };
 
 } // namespace world

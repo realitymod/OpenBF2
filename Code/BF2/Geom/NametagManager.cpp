@@ -115,15 +115,15 @@ double NametagManager::s_medicCallTimer             = 0.0;
 double NametagManager::s_ammoCallTimer              = 0.0;
 double NametagManager::s_repairCallTimer            = 0.0;
 bool   NametagManager::s_useVisualRadiusForVehicles = false;
-float  NametagManager::s_transformations1[2][4];
+float  NametagManager::s_transformations1[NameTagRenderer::SlotCapacity][4];
 float  NametagManager::s_colors0[5][4];
 float  NametagManager::s_colors1[1][4];
-float  NametagManager::s_transformations0[64][4];
+float  NametagManager::s_transformations0[NameTagRenderer::SlotCapacity][4];
 // the TU's dynamic initialiser: `fld A10; fdiv A10; fmul 2pi; fstp C9B8`. The same
 // global read twice, so the rate is always 2pi (as a float) whatever the call icon time is.
 float  NametagManager::s_pulseRate = NametagManager::s_callIconTime / NametagManager::s_callIconTime
                                      * 6.28318548f;
-float  NametagManager::s_transformations2[64][4];
+float  NametagManager::s_transformations2[NameTagRenderer::SlotCapacity][4];
 int    NametagManager::s_lastSeatCount              = 0;
 // (0x1025C2C0..0x1025C5B4 hold the squad-name strings "Unassigned", "Alpha" ... that a shared game
 // header defines in every including TU - sub_101D39A0. Nothing in this TU reads them.)
@@ -819,12 +819,12 @@ NametagManager::NametagManager()
     m_transformations.resize(3, 0);                                      // sub_10132390(3, 0)
     m_colors.resize(3, 0);
 
-    // operator new(0xA924): a count prefix of 3 and three NameTagRenderer ctors (0x101B2F00). A
+    // operator new(0xA924 retail): a count prefix of 3 and three NameTagRenderer ctors (0x101B2F00). A
     // failed allocation leaves a NULL array and the next line dereferences it - shipped; the
     // nothrow form reproduces the null result the retail allocator can return.
     m_renderers = new (std::nothrow) NameTagRenderer[3];
 
-    m_renderers[0].initialize(TTPlayer, 64, 4, s_cullDistances[TTPlayer]);
+    m_renderers[0].initialize(TTPlayer, NameTagRenderer::SlotCapacity, 4, s_cullDistances[TTPlayer]);
     m_transformations[TTPlayer] = &s_transformations0[0][0];
     m_colors[TTPlayer] = &s_colors0[0][0];
     // the five colours. The pointer is re-read from the vector for every
@@ -841,19 +841,19 @@ NametagManager::NametagManager()
     colors[16] = 1.0f;                        colors[17] = 1.0f;       // 4: yellow
     colors[18] = 0.0f;                        colors[19] = 1.0f;
 
-    m_renderers[1].initialize(TTOrder, 64, 1, s_cullDistances[TTOrder]);
+    m_renderers[1].initialize(TTOrder, NameTagRenderer::SlotCapacity, 1, s_cullDistances[TTOrder]);
     m_transformations[TTOrder] = &s_transformations1[0][0];
     m_colors[TTOrder] = &s_colors1[0][0];
     colors = m_colors[TTOrder];
     colors[0] = 1.0f; colors[1] = 1.0f; colors[2] = 1.0f; colors[3] = 1.0f;
 
-    m_renderers[2].initialize(TTObject, 64, 5, s_cullDistances[TTObject]);
+    m_renderers[2].initialize(TTObject, NameTagRenderer::SlotCapacity, 5, s_cullDistances[TTObject]);
     m_transformations[TTObject] = &s_transformations2[0][0];
     m_colors[TTObject] = &s_colors0[0][0];     // shared with the player renderer's colours
 
     // 0x1012FB10..0x1012FB3E: `lea edi, [esi+38h]` is inside the loop, so all three passes clear
-    // from the first alpha array (64, 2 and 64 dwords). Arrays 1 and 2 keep whatever operator new
-    // returned. Shipped.
+    // from the first alpha array (64, 2 and 64 dwords in retail). Arrays 1 and 2 keep whatever
+    // operator new returned. Shipped.
     for (int type = 0; type < 3; ++type)
         ::memset(m_alphaArrays[0], 0, static_cast<size_t>(maxSlotCount(type)) * sizeof(float));
 
@@ -961,7 +961,7 @@ void NametagManager::draw()
     // the profiler bracket ("Nametags") - not reproduced, see
     // the file header.
     update();                                  // slot +0x14 - a virtual call
-    for (int type = TTObject; type >= TTPlayer; --type)   // 0x70C0, 0x3860, 0 - renderers 2, 1, 0
+    for (int type = TTObject; type >= TTPlayer; --type)   // renderers 2, 1, 0
         m_renderers[type].draw();
 }
 
@@ -1302,7 +1302,7 @@ float* NametagManager::getTransformations(int type)
     return m_transformations.at(type);
 }
 
-float* NametagManager::getAlphaArray(int type)        // this + 0x38 + type * 0x100
+float* NametagManager::getAlphaArray(int type)        // retail this + 0x38 + type * 0x100
 {
     return m_alphaArrays[type];
 }
@@ -1328,7 +1328,7 @@ void NametagManager::enableBuffering()
 }
 
 // 0x1012F420, 372 B: every slot free again, every key forgotten. The counts are 0x1012C840's,
-// inlined (64, 2, 64).
+// inlined (SlotCapacity, 2, SlotCapacity).
 void NametagManager::clearAll()
 {
     for (int type = TTPlayer; type <= TTObject; ++type)
@@ -1943,9 +1943,9 @@ int NametagManager::maxSlotCount(int type)
 {
     switch (type)
     {
-    case TTPlayer: return 64;
+    case TTPlayer: return NameTagRenderer::SlotCapacity;   // retail 64
     case TTOrder:  return 2;
-    case TTObject: return 64;
+    case TTObject: return NameTagRenderer::SlotCapacity;   // retail 64
     default:       return -1;
     }
 }
@@ -2200,7 +2200,7 @@ IBase* __fastcall createNametagManager(unsigned int iid, IBase* outer)
     if (outer)
         return 0;
 
-    void* const storage = ::renddx9abi::engineAlloc(sizeof(NametagManager));   // new(0x5D8)
+    void* const storage = ::renddx9abi::engineAlloc(sizeof(NametagManager));   // retail new(0x5D8)
     NametagManager* const self = storage ? new (storage) NametagManager() : 0;
 
     void* const itf = self->queryInterface(iid);

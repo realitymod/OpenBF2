@@ -14,6 +14,8 @@
 #include "../../../IO/Console/Console.h"
 #include "../../../Math/Mat4.h"
 #include "../../../Math/Vec3.h"
+#include "../../../Physics/IPhysicsNode.h"
+#include "../../../Physics/SoldierPhysicsNode.h"
 #include "../../../Scene/Object/ObjectTypes/Base/ObjectTemplateManager.h"
 #include "../../../Scene/Object/ObjectManager.h"         // getAllObjectsFromGrid - the filter walk
 #include <cstdio>                                        // [TEMP] the wrapper-integrity probes
@@ -23,6 +25,11 @@
 // the typed interfaces that retired the raw slot views
 #include "../../Objects/IObject.h"
 #include "../../Objects/IPlayer.h"
+#include "../../Objects/IWeaponObject.h"
+#include "../../Objects/Game/SupplyObject.h"
+#include "../../Objects/Game/Soldier.h"
+#include "../../Objects/ISoldier.h"
+#include "../../Objects/ISpawnPoint.h"
 #include "../../Objects/IControlPoint.h"
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
@@ -290,6 +297,21 @@ PyObject* object_pco_getIsWreck(PyObject*, PyObject*);
 PyObject* object_pco_getTeam(PyObject*, PyObject*);
 PyObject* object_cp_getParam(PyObject*, PyObject*);
 PyObject* object_cp_setParam(PyObject*, PyObject*);
+PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
+PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
+PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
+PyObject* object_weapon_setHeat(PyObject*, PyObject*);             // [CHOSEN, not recovered]
+PyObject* object_soldier_getStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
+PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
+PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject*);      // [CHOSEN, not recovered]
+PyObject* object_soldier_getPose(PyObject*, PyObject*);            // [CHOSEN, not recovered]
+PyObject* object_getObjectId(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_spawnPoint_getSpawnGroup(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_pco_getPcoId(PyObject*, PyObject*);               // [CHOSEN, not recovered]
 
 PyMethodDef meth_getPosition        = { "getPosition",        object_getPosition,        METH_VARARGS, 0 };
 PyMethodDef meth_setPosition        = { "setPosition",        object_setPosition,        METH_VARARGS, 0 };
@@ -310,6 +332,66 @@ PyMethodDef meth_pco_getIsWreck     = { "getIsWreck",         object_pco_getIsWr
 PyMethodDef meth_pco_getTeam        = { "getTeam",            object_pco_getTeam,        METH_VARARGS, 0 };
 PyMethodDef meth_cp_getParam        = { "cp_getParam",        object_cp_getParam,        METH_VARARGS, 0 };
 PyMethodDef meth_cp_setParam        = { "cp_setParam",        object_cp_setParam,        METH_VARARGS, 0 };
+PyMethodDef meth_projectile_setTimeToLive
+                                    = { "setTimeToLive",      object_projectile_setTimeToLive,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getOnGround= { "getOnGround",        object_soldier_getOnGround,METH_VARARGS, 0 };
+PyMethodDef meth_supply_getSupplyAmmo
+                                    = { "getSupplyAmmo",      object_supply_getSupplyAmmo,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_supply_setSupplyAmmo
+                                    = { "setSupplyAmmo",      object_supply_setSupplyAmmo,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_weapon_setHeat     = { "setHeat",            object_weapon_setHeat,     METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getStamina = { "getStamina",         object_soldier_getStamina, METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStamina = { "setStamina",         object_soldier_setStamina, METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStaminaDissipation
+                                    = { "setStaminaDissipation", object_soldier_setStaminaDissipation,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_soldier_setStaminaRecovery
+                                    = { "setStaminaRecovery", object_soldier_setStaminaRecovery,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_soldier_getPose    = { "getPose",            object_soldier_getPose,    METH_VARARGS, 0 };
+PyMethodDef meth_getObjectId        = { "getObjectId",        object_getObjectId,        METH_VARARGS, 0 };
+PyMethodDef meth_spawnPoint_getSpawnGroup
+                                    = { "getSpawnGroup",      object_spawnPoint_getSpawnGroup,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_pco_getPcoId       = { "getPcoId",           object_pco_getPcoId,       METH_VARARGS, 0 };
+
+namespace {
+
+// The object's physics node when it moves on its own, else 0 (no node, or a static one).
+world::IPhysicsNode* dynamicPhysicsNode(world::IObject* obj)
+{
+    world::IPhysicsNode* node =
+        static_cast<world::IPhysicsNode*>(world::object_detail::LayoutAccess::physicsNode(obj));
+    return (node && node->getIsMobile()) ? node : 0;
+}
+
+world::Soldier* asSoldier(world::IObject* obj)
+{
+    return static_cast<world::Soldier*>(
+        static_cast<world::ISoldier*>(obj->queryInterface(world::IID_ISoldier)));
+}
+
+// Raises RuntimeError and returns false when the value is negative.
+bool checkSprintTime(double seconds)
+{
+    if (seconds >= 0.0)
+        return true;
+    PyErr_SetString(PyExc_RuntimeError, "sprint time must not be negative");
+    return false;
+}
+
+bool isSupplyObject(world::IObject* obj)
+{
+    return world::object_detail::LayoutAccess::objectTemplate(obj)->getClassID()
+        == world::CID_SupplyObjectTemplate;
+}
+
+} // namespace
 
 // Adds common methods and capability-specific methods/flags to a Python object.
 // Armor uses the component field; PCO and control-point capabilities use interface
@@ -356,7 +438,265 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     }
     PyObject_SetAttrString(instance, "isControlPoint", PyInt_FromLong(isCp));
 
+    // [CHOSEN, not recovered] Project Reality's projectile lifetime method; not in retail.
+    if (o->queryInterface(world::IID_IProjectileObject))
+        addSingleMethod(instance, &meth_projectile_setTimeToLive);
+
+    // [CHOSEN, not recovered] Project Reality's physics methods; not in retail.
+    long hasDynamicPhysics = 0;
+    if (dynamicPhysicsNode(obj))
+    {
+        addSingleMethod(instance, &meth_getVelocity);
+        addSingleMethod(instance, &meth_setVelocity);
+        if (o->queryInterface(world::IID_ISoldier))
+            addSingleMethod(instance, &meth_soldier_getOnGround);
+        hasDynamicPhysics = 1;
+    }
+    PyObject_SetAttrString(instance, "hasDynamicPhysics", PyInt_FromLong(hasDynamicPhysics));
+
+    // [CHOSEN, not recovered] Project Reality's supply crate and weapon heat methods; not in retail.
+    if (isSupplyObject(obj))
+    {
+        addSingleMethod(instance, &meth_supply_getSupplyAmmo);
+        addSingleMethod(instance, &meth_supply_setSupplyAmmo);
+    }
+    if (o->queryInterface(world::IID_IWeaponObject))
+        addSingleMethod(instance, &meth_weapon_setHeat);
+
+    // [CHOSEN, not recovered] Project Reality's soldier stamina and pose methods; not in retail.
+    if (o->queryInterface(world::IID_ISoldier))
+    {
+        addSingleMethod(instance, &meth_soldier_getStamina);
+        addSingleMethod(instance, &meth_soldier_setStamina);
+        addSingleMethod(instance, &meth_soldier_setStaminaDissipation);
+        addSingleMethod(instance, &meth_soldier_setStaminaRecovery);
+        addSingleMethod(instance, &meth_soldier_getPose);
+    }
+
+    // [CHOSEN, not recovered] Project Reality's object id, spawn group and PCO id reads; not in retail.
+    addSingleMethod(instance, &meth_getObjectId);
+    if (o->queryInterface(IID_ISpawnPoint))
+        addSingleMethod(instance, &meth_spawnPoint_getSpawnGroup);
+    if (isPco)
+        addSingleMethod(instance, &meth_pco_getPcoId);
+
     return true;        // always
+}
+
+// [CHOSEN, not recovered] projectile.setTimeToLive(seconds): the projectile removes itself after
+// the given time, through the template message 29 GenericProjectile posts for its own lifetime.
+PyObject* object_projectile_setTimeToLive(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1)
+        return 0;
+
+    world::objectManager->postMessage(obj, static_cast<world::TemplateMessage>(29),
+                                      static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] obj.getVelocity(): the physics node's positional speed, (0, 0, 0) while
+// the object is attached to a parent.
+PyObject* object_getVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return to_py(dynamicPhysicsNode(obj)->getPositionalSpeed());
+}
+
+// [CHOSEN, not recovered] obj.setVelocity((x, y, z)): wakes the physics node, then sets its
+// positional speed, clamped to the engine's maximum.
+PyObject* object_setVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    Vec3 v;
+    v.x = v.y = v.z = 0.0f;
+
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<Vec3>(args, 1, v);
+    if (e0 + e1)
+        return 0;
+
+    world::IPhysicsNode* node = dynamicPhysicsNode(obj);
+    node->setIsAwake();
+    node->setPositionalSpeed(v);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getOnGround(): 1 when the soldier touched something since the
+// last physics update, else 0. Soldiers always get a SoldierPhysicsNode
+// (SimpleObjectTemplate::buildMobilePhysicsNode).
+PyObject* object_soldier_getOnGround(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    world::SoldierPhysicsNode* node = static_cast<world::SoldierPhysicsNode*>(
+        world::object_detail::LayoutAccess::physicsNode(obj));
+    return PyInt_FromLong(node->getFrictionCount() != 0 ? 1 : 0);
+}
+
+// [CHOSEN, not recovered] supply.getSupplyAmmo(): the crate's shared storage, the pool that
+// rearming and healing spill into.
+PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyFloat_FromDouble(static_cast<world::SupplyObject*>(obj)->getSharedStorage());
+}
+
+// [CHOSEN, not recovered] supply.setSupplyAmmo(amount): sets the crate's shared storage, raising a
+// negative amount to 0.
+PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double amount = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, amount);
+    if (e0 + e1)
+        return 0;
+
+    static_cast<world::SupplyObject*>(obj)->setSharedStorage(
+        amount < 0.0 ? 0.0f : static_cast<float>(amount));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] weapon.setHeat(heat): sets the weapon's heat, from which it cools down as
+// after firing.
+PyObject* object_weapon_setHeat(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double heat = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, heat);
+    if (e0 + e1)
+        return 0;
+
+    static_cast<world::IWeaponObject*>(obj->queryInterface(world::IID_IWeaponObject))
+        ->setHeat(static_cast<float>(heat));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getStamina(): sprint stamina, 0.0 to 1.0.
+PyObject* object_soldier_getStamina(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyFloat_FromDouble(asSoldier(obj)->getSprintStamina());
+}
+
+// [CHOSEN, not recovered] soldier.setStamina(stamina): sets sprint stamina, which the soldier's
+// networkable sends to clients. Raises RuntimeError outside 0.0 to 1.0.
+PyObject* object_soldier_setStamina(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double stamina = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, stamina);
+    if (e0 + e1)
+        return 0;
+
+    if (stamina < 0.0 || stamina > 1.0)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "stamina must be between 0 and 1");
+        return 0;
+    }
+    asSoldier(obj)->setSprintStamina(static_cast<float>(stamina));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.setStaminaDissipation(seconds): how long a full sprint lasts,
+// replacing the template's SprintDissipationTime until a player next enters the soldier, as on
+// spawn. Clients keep predicting with the template value. Raises RuntimeError when negative.
+PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1 || !checkSprintTime(seconds))
+        return 0;
+
+    asSoldier(obj)->setSprintDissipationTime(static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.setStaminaRecovery(seconds): how long stamina takes to recover,
+// replacing the template's SprintRecoverTime until a player next enters the soldier, as on spawn.
+// Clients keep predicting with the template value. Raises RuntimeError when negative.
+PyObject* object_soldier_setStaminaRecovery(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double seconds = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, seconds);
+    if (e0 + e1 || !checkSprintTime(seconds))
+        return 0;
+
+    asSoldier(obj)->setSprintRecoverTime(static_cast<float>(seconds));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] soldier.getPose(): 0 standing, 1 crouching, 2 prone, 3 swimming.
+PyObject* object_soldier_getPose(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<long>(asSoldier(obj)->getPose()));
+}
+
+// [CHOSEN, not recovered] obj.getObjectId(): the engine's object id, as console commands such as
+// Object.active take it.
+PyObject* object_getObjectId(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<long>(obj->getObjectId()));
+}
+
+// [CHOSEN, not recovered] spawnPoint.getSpawnGroup(): the spawn group players select to spawn here.
+PyObject* object_spawnPoint_getSpawnGroup(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(
+        static_cast<ISpawnPoint*>(obj->queryInterface(IID_ISpawnPoint))->getSpawnGroupId());
+}
+
+// [CHOSEN, not recovered] pco.getPcoId(): the seat's position in its vehicle, as the position-select
+// keys number it.
+PyObject* object_pco_getPcoId(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return PyInt_FromLong(static_cast<world::IPlayerControlObject*>(
+        obj->queryInterface(world::IID_IPlayerControlObject))->getPcoId());
 }
 
 // Returns an owned reference to the object's cached Python wrapper, preserving identity.

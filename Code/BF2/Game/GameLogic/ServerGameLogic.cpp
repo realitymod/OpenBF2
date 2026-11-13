@@ -1104,6 +1104,36 @@ world::IPlayerControlObject* controlObjectAtOrAbove(world::IObject* object)
     return 0;
 }
 
+// [CHOSEN, not recovered] Project Reality's eighth seat key, which reaches seats past the eighth: the
+// next free seat after the current one in seat order, wrapping around, or seat 0 when every other
+// seat is taken. While the key is held, the last answer repeats for half a second so the player
+// does not step through the seats every tick.
+const unsigned int kSeatCycleRepeatTicks = 15;
+std::map<int, std::pair<unsigned int, int> > g_lastSeatCycle;   // player id -> (tick, seat)
+
+int nextFreeSeat(world::IPlayer* player, world::IPlayerControlObject* rootPco,
+                 world::IPlayerControlObject* currentPco)
+{
+    const unsigned int now = static_cast<unsigned int>(WorldPref::getTickCount());
+    std::map<int, std::pair<unsigned int, int> >::iterator last = g_lastSeatCycle.find(player->getId());
+    if (last != g_lastSeatCycle.end() && now - last->second.first < kSeatCycleRepeatTicks)
+        return last->second.second;
+
+    std::map<int, world::IPlayerControlObject*>* const pcos = rootPco->getPcos();
+    std::map<int, world::IPlayerControlObject*>::iterator it = pcos->upper_bound(currentPco->getPcoId());
+    for (std::size_t step = 1; step < pcos->size(); ++step, ++it)
+    {
+        if (it == pcos->end())
+            it = pcos->begin();
+        if (!it->second->isOccupied())
+        {
+            g_lastSeatCycle[player->getId()] = std::make_pair(now, it->first);
+            return it->first;
+        }
+    }
+    return 0;
+}
+
 } // anonymous namespace
 
 namespace world {
@@ -1442,7 +1472,7 @@ void ServerGameLogic::checkPlayerTriggers(world::IPlayer* player, world::IObject
 
     if (seat != 0)
     {
-        const int requestedPcoId = seat - 1;
+        int requestedPcoId = seat - 1;
 
         // Search seats from the hierarchy root, while identifying the current seat from the player's vehicle.
         world::IPlayerControlObject* rootPco =
@@ -1450,6 +1480,9 @@ void ServerGameLogic::checkPlayerTriggers(world::IPlayer* player, world::IObject
         if (rootPco)
         {
             world::IPlayerControlObject* currentPco = controlObjectAtOrAbove(vehicle);
+            // [CHOSEN, not recovered] See nextFreeSeat.
+            if (requestedPcoId == 7 && !player->getIsAIPlayer())
+                requestedPcoId = nextFreeSeat(player, rootPco, currentPco);
             const bool blocked = playerHoldsSelectableWeapon(effectiveControlObject(player));
 
             bool sendSwitchAck = true;

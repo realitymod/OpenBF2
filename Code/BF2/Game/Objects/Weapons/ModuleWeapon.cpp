@@ -918,6 +918,21 @@ BF2_CONSOLE_FIELD(canFireGuiIndex,     int,   activeFireArm(), m_canFireGuiIndex
 BF2_CONSOLE_FIELD(cannotFireGuiIndex,  int,   activeFireArm(), m_cannotFireGuiIndex,  kWeaponConsoleTag)
 BF2_CONSOLE_FIELD(cannotFireTimer,     float, activeFireArm(), m_cannotFireTimer,     kWeaponConsoleTag)
 BF2_CONSOLE_FIELD(crosshairFireTime,   float, activeFireArm(), m_crosshairFireTime,   kWeaponConsoleTag)
+// [CHOSEN, not recovered] Project Reality's flag; not a retail property.
+BF2_CONSOLE_FIELD(proneOnlyReload,     bool,  activeFireArm(), m_proneOnlyReload,     kWeaponConsoleTag)
+
+// [CHOSEN, not recovered] Project Reality's pr.setRecoilGraphSize <frames>: the recoilGraphFrameCount
+// of recoil templates created afterwards (PR's client init.con sets it; the server must match).
+// Kept last in this file because BF2_CONSOLE_OBJECT sets the object name for what follows.
+namespace {
+void prSetRecoilGraphSize(int frames)
+{
+    if (frames > 0)
+        SoldierBasedRecoilCompTemplate::setDefaultRecoilGraphFrameCount(frames);
+}
+}
+BF2_CONSOLE_OBJECT("pr", 2, 0)
+BF2_CONSOLE_METHOD_1(setRecoilGraphSize, prSetRecoilGraphSize, int, kWeaponConsoleTag)
 
 } // namespace world
 } // namespace hfe

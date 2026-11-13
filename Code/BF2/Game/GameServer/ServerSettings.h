@@ -196,6 +196,11 @@ public:
     bool  m_useGlobalUnlocks;            // +0xF7  true
     int   m_endOfRoundDelay;             // +0xF8  15
     // ... m_friendlyFireWithMines +0x100 (false) / m_noVehicles +0x101 (false) declared above ...
+
+    // [CHOSEN, not recovered] Project Reality setting appended past the retail layout. How often
+    // GameServer repeats a connection's ghost-scope pass: after a pass the scope timer is reloaded
+    // with (ticks - 1) * 0.1 s. Retail hard-codes 0.1 s, which is 2. At least 1.
+    int   m_ghostScopeRefreshTicks;      //        4
 };
 
 // Reserved nicknames and their configuration filename.

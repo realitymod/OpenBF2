@@ -194,6 +194,18 @@ void DefaultZoomComp::updateComponent(float, unsigned int)
             m_waitingForBusy = false;
         }
     }
+
+    // [CHOSEN, not recovered] Project Reality zooms an onlyZoomWhenProne weapon out as soon as its
+    // soldier stops lying prone.
+    if (m_currentZoom != 0 && m_defaultTemplate->getOnlyZoomWhenProne() && player)
+    {
+        IObject* const vehicle = player->getVehicle();
+        if (vehicle && vehicle->getTemplate()->getClassID() == CID_SoldierTemplate
+            && static_cast<Soldier*>(vehicle)->getPose() != SoldierPose_Prone)
+        {
+            changeZoom(0, false);
+        }
+    }
 }
 
 bool DefaultZoomComp::requestFire(bool, bool)

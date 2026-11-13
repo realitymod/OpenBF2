@@ -13,6 +13,7 @@
 namespace dice {
 namespace hfe {
 
+namespace world { class IObject; }
 
 namespace python {
 
@@ -26,6 +27,8 @@ int parse_arg(PyObject* o, std::string& out);
 int parse_arg(PyObject* o, PyObject*& out);
 int parse_arg(PyObject* o, Vec3& out);
 int parse_arg(PyObject* o, ObjectToken*& out);
+// [CHOSEN, not recovered] Declared for PythonHost.cpp's object-taking host methods.
+int parse_arg(PyObject* o, world::IObject*& out);
 void* tokenControlBlock(ObjectToken* token);   // py/Objects.cpp - trig_create's retain
 
 // Stops unpacking when a Python error is already pending, allowing callers to check after the last argument.
