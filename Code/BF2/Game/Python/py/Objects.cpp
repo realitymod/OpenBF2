@@ -301,6 +301,7 @@ PyObject* object_cp_setParam(PyObject*, PyObject*);
 PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
+PyObject* object_teleport(PyObject*, PyObject*);                   // [CHOSEN, not recovered]
 PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
 PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
@@ -341,6 +342,7 @@ PyMethodDef meth_projectile_setTimeToLive
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_teleport           = { "teleport",           object_teleport,           METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getOnGround= { "getOnGround",        object_soldier_getOnGround,METH_VARARGS, 0 };
 PyMethodDef meth_supply_getSupplyAmmo
                                     = { "getSupplyAmmo",      object_supply_getSupplyAmmo,
@@ -461,6 +463,7 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     {
         addSingleMethod(instance, &meth_getVelocity);
         addSingleMethod(instance, &meth_setVelocity);
+        addSingleMethod(instance, &meth_teleport);
         if (o->queryInterface(world::IID_ISoldier))
             addSingleMethod(instance, &meth_soldier_getOnGround);
         hasDynamicPhysics = 1;
@@ -543,6 +546,30 @@ PyObject* object_setVelocity(PyObject*, PyObject* args)
     world::IPhysicsNode* node = dynamicPhysicsNode(obj);
     node->setIsAwake();
     node->setPositionalSpeed(v);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] obj.teleport((x, y, z)): moves the object there, keeping its rotation,
+// and pins its physics node's previous transformation to the new one, as the soldier networkable's
+// teleport does, so collision and interpolation do not sweep across the jump.
+PyObject* object_teleport(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    Vec3 p;
+    p.x = p.y = p.z = 0.0f;
+
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<Vec3>(args, 1, p);
+    if (e0 + e1)
+        return 0;
+
+    Mat4 transformation = obj->getAbsoluteTransformation();
+    transformation.m[12] = p.x;
+    transformation.m[13] = p.y;
+    transformation.m[14] = p.z;
+    obj->setAbsoluteTransformation(transformation);
+    dynamicPhysicsNode(obj)->setPrevTransformation(transformation);
     Py_INCREF(Py_None);
     return Py_None;
 }
