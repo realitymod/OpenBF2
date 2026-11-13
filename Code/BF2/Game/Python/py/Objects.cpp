@@ -306,6 +306,7 @@ PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, n
 PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_weapon_setHeat(PyObject*, PyObject*);             // [CHOSEN, not recovered]
+PyObject* object_weapon_getTargetObject(PyObject*, PyObject*);     // [CHOSEN, not recovered]
 PyObject* object_soldier_getStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
@@ -351,6 +352,9 @@ PyMethodDef meth_supply_setSupplyAmmo
                                     = { "setSupplyAmmo",      object_supply_setSupplyAmmo,
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_weapon_setHeat     = { "setHeat",            object_weapon_setHeat,     METH_VARARGS, 0 };
+PyMethodDef meth_weapon_getTargetObject
+                                    = { "getTargetObject",    object_weapon_getTargetObject,
+                                                                                         METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getStamina = { "getStamina",         object_soldier_getStamina, METH_VARARGS, 0 };
 PyMethodDef meth_soldier_setStamina = { "setStamina",         object_soldier_setStamina, METH_VARARGS, 0 };
 PyMethodDef meth_soldier_setStaminaDissipation
@@ -477,7 +481,10 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_supply_setSupplyAmmo);
     }
     if (o->queryInterface(world::IID_IWeaponObject))
+    {
         addSingleMethod(instance, &meth_weapon_setHeat);
+        addSingleMethod(instance, &meth_weapon_getTargetObject);
+    }
 
     // [CHOSEN, not recovered] Project Reality's soldier stamina and pose methods; not in retail.
     if (o->queryInterface(world::IID_ISoldier))
@@ -631,6 +638,18 @@ PyObject* object_weapon_setHeat(PyObject*, PyObject* args)
         ->setHeat(static_cast<float>(heat));
     Py_INCREF(Py_None);
     return Py_None;
+}
+
+// [CHOSEN, not recovered] weapon.getTargetObject(): the target object the weapon's target component
+// places (for a laser painter, its UniqueTarget at the beam's hit point), or None.
+PyObject* object_weapon_getTargetObject(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return to_py(static_cast<world::IWeaponObject*>(obj->queryInterface(world::IID_IWeaponObject))
+                     ->getTargetObject());
 }
 
 // [CHOSEN, not recovered] soldier.getStamina(): sprint stamina, 0.0 to 1.0.
