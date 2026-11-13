@@ -25,6 +25,9 @@
 #include "../../../../Physics/HeightmapCluster.h"
 #include "../../../../Physics/IPhysicsNode.h"
 #include "../../../../Physics/LatencyCompensation.h"
+#include "../../../../Core/StringUtil.h"            // [CHOSEN, not recovered] ProjectileCreated filter
+#include "../../../Python/PythonHost.h"
+#include "../../../Python/PyRef.h"
 #include "../../../../Scene/Object/ObjectManager.h"
 #include "../../../../Scene/Object/PlayerManager.h"
 #include "../../../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h"
@@ -35,6 +38,7 @@
 #include <cstdlib>               // [TEMP] fire-mode toggle tracer
 #include <cstring>
 #include <map>
+#include <set>
 #include <sstream>
 
 #include "../../../../Core/Debug.h"
@@ -313,7 +317,27 @@ const Mat4& compensateGunnerLatency(IObject* weapon, IPlayer* shooter, const Mat
     return compensated;
 }
 
+// [CHOSEN, not recovered] See FireComp::notifyScriptsOnCreate. Lower-cased template names.
+std::set<std::string> g_scriptNotifiedProjectiles;
+
 } // anonymous namespace
+
+void FireComp::notifyScriptsOnCreate(const std::string& projectileTemplateName)
+{
+    g_scriptNotifiedProjectiles.insert(getLowerCase(projectileTemplateName));
+}
+
+void FireComp::notifyProjectileCreated(IObject* projectile)
+{
+    if (!projectile || g_scriptNotifiedProjectiles.empty() || !gameLogic->isServer())
+        return;
+    if (!g_scriptNotifiedProjectiles.count(getLowerCase(projectile->getTemplate()->getName())))
+        return;
+
+    IObject* const weapon = firearm();
+    python::PyRef args = python::buildArgs(weapon, projectile);
+    python::pythonHost()->handleEvent(static_cast<ScriptEvent>(44), args.get());
+}
 
 // ds:0x8ABAF24, defined in Core/Globals.cpp.  FireComp deliberately dereferences it without a
 // null guard after a projectile has been created, exactly as both shipped ports do.
@@ -1007,6 +1031,7 @@ bool FireComp::launchProjectile(int index)
         else
         {
             IObject* const object = setupProjectile(origin, velocity);
+            notifyProjectileCreated(object);                     // [CHOSEN, not recovered]
             if (!object)
                 continue;
 

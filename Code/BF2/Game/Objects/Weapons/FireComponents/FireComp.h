@@ -314,9 +314,15 @@ public:
     int getFireStartDelayInTicks();
     void setFireState(FireState);
 
+    // [CHOSEN, not recovered] Project Reality's projectile-created filter: fired projectiles of this
+    // template (case-insensitive) raise the ProjectileCreated script event on the server.
+    static void notifyScriptsOnCreate(const std::string& projectileTemplateName);
+
 protected:
     bool launchProjectile(int);
     IObject* setupProjectile(const Mat4&, Vec3&);
+    // [CHOSEN, not recovered] Raises ProjectileCreated(weapon, projectile) for a listed template.
+    void notifyProjectileCreated(IObject* projectile);
     bool getUseLocalPrediction(const IObjectTemplate*) const;
     bool ignoreNetworkedProjectileOnClient(const IObjectTemplate*) const;
     virtual IObject* createProjectile(const IObjectTemplate*, const Mat4&);

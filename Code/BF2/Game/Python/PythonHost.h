@@ -122,6 +122,7 @@ PyRef buildArgs(const int& a0);                              // buildArgs<int>  
 PyRef buildArgs(const int& a0, const int& a1);               // buildArgs<int,int>        0x8105750
 PyRef buildArgs(world::IObject* const& a0, const int& a1);   // buildArgs<IObject*, int>  0x81719B0
 PyRef buildArgs(world::IObject* const& a0);                  // [CHOSEN, not recovered] ObjectSpawned
+PyRef buildArgs(world::IObject* const& a0, world::IObject* const& a1);   // [CHOSEN, not recovered] ProjectileCreated
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1);                // enterVehicle's event 23
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, const bool& a2); // enterVehicle's event 21
 PyRef buildArgs(world::IPlayer* const& a0);                  // buildArgs<IPlayer*>       0x80A4860, 138 B

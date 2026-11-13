@@ -46,6 +46,7 @@
 #include "../Objects/IPlayer.h"          // the real interface - to_py(IPlayer*) reads getId
 #include "../../IO/Input/PlayerInput.h"  // pmgr_p_getInput
 #include "../GameLogic/Player.h"         // pmgr_p_setIgnoreCombatArea
+#include "../Objects/Weapons/FireComponents/FireComp.h"   // sgl_addProjectileCreatedTemplate
 #include "../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h" // pmgr_p_get vehicle/weapon
 #include "../Objects/ISoldier.h"          // pmgr_p_get kit query
 #include "../Objects/Game/Kit.h"          // ISoldier::getKit -> IObject conversion
@@ -522,6 +523,21 @@ PyRef buildArgs(world::IObject* const& a0)
     return result;
 }
 
+// [CHOSEN, not recovered] Not in retail: the ProjectileCreated script event's (weapon, projectile).
+PyRef buildArgs(world::IObject* const& a0, world::IObject* const& a1)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(2);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+    PyTuple_SetItem(t, 1, to_py(a1));
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
 //  (225 B), dedicated PE 0x5404D0: Python command arguments.
 // Both images retain the initialized guard, three stealing tuple insertions in this order,
 // and the PyRef/increment then decrement transfer. to_py(vector<int>) builds a nested tuple.
@@ -979,6 +995,7 @@ PyObject* sgl_killPlayer(PyObject*, PyObject*);             //   [CHOSEN, not re
 PyObject* sgl_exitVehicle(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
 PyObject* sgl_selectItem(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
 PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* sgl_addProjectileCreatedTemplate(PyObject*, PyObject*);  // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
 PyObject* sgl_getSettingsBool(PyObject*, PyObject*);
@@ -1961,6 +1978,20 @@ PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject* args)
     return Py_None;
 }
 
+// [CHOSEN, not recovered] Project Reality's projectile-created filter; not a retail host method.
+// host.sgl_addProjectileCreatedTemplate(templateName): from now on the ProjectileCreated event
+// fires for every fired projectile of that template (case-insensitive).
+PyObject* sgl_addProjectileCreatedTemplate(PyObject*, PyObject* args)
+{
+    std::string templateName;
+    if (py_arg<std::string>(args, 0, templateName))
+        return 0;
+
+    world::FireComp::notifyScriptsOnCreate(templateName);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
 // pers_getStatsKeyVal - ELF 0x8159A60 (355 B), PE 0x532BD0 (227 B). This does not start a backend
 // request: it reads map zero from the current persistence object that a completed request published
 // on GameServer. The error text is part of the Python contract.
@@ -2222,8 +2253,10 @@ const ScriptEventMapEntry scriptEventMap[] =
     { "RemoteCommand",              38 },  { "ChatMessage",               39 },
     { "ValidatePlayerNameResponse", 40 },  { "SpottedMessageSent",        41 },
     // [CHOSEN, not recovered] Project Reality events, not in retail: Player::setSpawnGroup's
-    // (playerId, group), and ObjectSpawner::spawnObject's (object).
+    // (playerId, group), ObjectSpawner::spawnObject's (object), and FireComp's (weapon, projectile)
+    // for templates listed with host.sgl_addProjectileCreatedTemplate.
     { "PlayerChangeSpawnGroup",     42 },  { "ObjectSpawned",             43 },
+    { "ProjectileCreated",          44 },
     { 0,                             0 },
 };
 
@@ -2369,6 +2402,7 @@ PyMethodDef method_table[] =
     { "sgl_exitVehicle",             sgl_exitVehicle,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_selectItem",              sgl_selectItem,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_addProjectileCreatedTemplate", sgl_addProjectileCreatedTemplate, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
     { "sgl_getSettingsBool",         sgl_getSettingsBool,                METH_VARARGS, 0 },
@@ -2482,9 +2516,9 @@ bool PythonHost::initialize(bool minimal)
             return false;
         }
 
-        // THE magic 42 - see the block above. [CHOSEN, not recovered] 44 here: two more for
-        // PlayerChangeSpawnGroup and ObjectSpawned.
-        d->m_vector28.resize(44);                        // +0x28, indexed by ScriptEvent
+        // THE magic 42 - see the block above. [CHOSEN, not recovered] 45 here: three more for
+        // PlayerChangeSpawnGroup, ObjectSpawned and ProjectileCreated.
+        d->m_vector28.resize(45);                        // +0x28, indexed by ScriptEvent
 
         PyObject* const bf2Dict = PyModule_GetDict(d->m_bf2Module);
 
