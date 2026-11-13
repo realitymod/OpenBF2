@@ -3469,8 +3469,11 @@ void Soldier::updateSoldierPose(bool prone, bool crouch)
             m_poseTimers[3] = g_poseUpTimerB;
             m_float3B4      = g_poseUpTimerC;
         }
-        if (pose == 0 && m_requestedPose == 2)               // going down: one timer
-            m_poseTimers[2] = g_poseDownTimer;
+        // [CHOSEN, not recovered] Project Reality: going prone from any stance delays firing by
+        // stand-delay-from-prone; retail delayed standing up again, and only when going down from
+        // standing (m_poseTimers[2]). The PR client predicts firing with this rule.
+        if (m_requestedPose == 2)
+            m_float3B4 = g_poseDownTimer;
 
         m_poseInputLatch |= 2;                               // latch the press
         return;
