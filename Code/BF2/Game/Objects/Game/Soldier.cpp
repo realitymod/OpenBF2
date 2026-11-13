@@ -108,13 +108,18 @@ float* const g_inputReleaseRateVar    = Vars::getFloat("phy-soldier-deceleration
 float* const g_skydiveAtSpeedVar      = Vars::getFloat("phy-soldier-skydiveat-speed", -10.0f);
 float* const g_skydiveSpeedVar        = Vars::getFloat("phy-soldier-skydive-speed", 15.0f);
 float* const g_soldierDrownDamageVar  = Vars::getFloat("soldier-drown-damage", 8.0f);
-float* const g_sprintSpeedVar         = Vars::getFloat("phy-soldier-sprint-speed", 7.0f);
-float* const g_runSpeedVar            = Vars::getFloat("phy-soldier-run-speed", 3.9f);
-float* const g_walkSpeedVar           = Vars::getFloat("phy-soldier-walk-speed", 1.5f);
-float* const g_crouchSpeedVar         = Vars::getFloat("phy-soldier-crouch-speed", 2.0f);
-float* const g_crawlSpeedVar          = Vars::getFloat("phy-soldier-crawl-speed", 0.8f);
-float* const g_swimSpeedVar           = Vars::getFloat("phy-soldier-swim-speed", 2.0999999f);
-float* const g_swimCrawlSpeedVar      = Vars::getFloat("phy-soldier-swimcrawl-speed", 3.6450002f);  // raw 0x406947AE
+// [CHOSEN, not recovered] Project Reality's soldier speeds as the defaults; the PR server and client
+// hard-code these, and the PR client predicts with them. Retail: sprint 7.0, run 3.9, walk 1.5,
+// crouch 2.0, crawl 0.8, swim 2.1, swimcrawl 3.645 (raw 0x406947AE). Sprint is the shipped PR
+// servers' 5.2; PR's SoldierMovement bindiff gives 1.45 (0x3FB9999A) for its client instead, which
+// is slower than running and has not been checked against the shipped PR client.
+float* const g_sprintSpeedVar         = Vars::getFloat("phy-soldier-sprint-speed", 5.2f);
+float* const g_runSpeedVar            = Vars::getFloat("phy-soldier-run-speed", 2.9f);
+float* const g_walkSpeedVar           = Vars::getFloat("phy-soldier-walk-speed", 1.6f);
+float* const g_crouchSpeedVar         = Vars::getFloat("phy-soldier-crouch-speed", 1.2f);
+float* const g_crawlSpeedVar          = Vars::getFloat("phy-soldier-crawl-speed", 0.6f);
+float* const g_swimSpeedVar           = Vars::getFloat("phy-soldier-swim-speed", 1.5f);
+float* const g_swimCrawlSpeedVar      = Vars::getFloat("phy-soldier-swimcrawl-speed", 2.45f);
 float* const g_jumpSpeedFactorVar     = Vars::getFloat("phy-soldier-inair-speed", 2.0f);
 float* const g_maxTurnRatePerTickVar  = Vars::getFloat("soldier-lookSideRestore", 4.0f);
 float* const g_proneWaterClearanceVar = Vars::getFloat("soldier-prone-inwater-limit", 1.1f);
