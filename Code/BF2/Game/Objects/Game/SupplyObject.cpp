@@ -226,7 +226,9 @@ void SupplyObject::reloadAmmo(IObject* object)
         if (seatObject->getParent() && seat->isChildSoldierActive())
             continue;
 
-        for (int bank = 0; bank <= 1; ++bank)
+        // [CHOSEN, not recovered] Project Reality: all three fire banks, so weapons on the third
+        // (PIFlareFire, e.g. flares) are rearmed too; retail stopped after banks 0 and 1.
+        for (int bank = 0; bank <= 2; ++bank)
         {
             std::vector<IObject*>* const weapons =
                 static_cast<std::vector<IObject*>*>(seat->getWeapons(bank));
