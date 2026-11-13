@@ -1220,23 +1220,11 @@ IObject* FireComp::setupProjectile(const Mat4& firedTransform, Vec3& velocity)
                     tracerNode->setPositionalSpeed(velocity);
                 }
 
-                // Retail asks for the interval again rather than reusing the stored value.
+                // [CHOSEN, not recovered] Project Reality: the round keeps its full speed. Retail
+                // slowed it to 0.75x when the magazine mixes tracers in (getTracerInterval() > 1);
+                // the PR client has the same change and predicts with it.
                 if (projectileNode)
-                {
-                    if (projectile->getTracerInterval() <= 1)
-                    {
-                        projectileNode->setPositionalSpeed(velocity);
-                    }
-                    else
-                    {
-                        const Vec3 slowedVelocity = {
-                            velocity.x * 0.75f,
-                            velocity.y * 0.75f,
-                            velocity.z * 0.75f
-                        };
-                        projectileNode->setPositionalSpeed(slowedVelocity);
-                    }
-                }
+                    projectileNode->setPositionalSpeed(velocity);
                 tracer->initOnLaunch();
             }
         }
