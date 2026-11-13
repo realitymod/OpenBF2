@@ -360,6 +360,10 @@ public:
     // Applies decoded remote weapon ammunition state to the player's live weapons.
     void          forceSetRemoteClientAmmo(unsigned int firedMask);
 
+    // [CHOSEN, not recovered] Project Reality's combat-area exemption, for
+    // host.pmgr_p_setIgnoreCombatArea: while set, uPlayingInsideGameArea treats the player as inside.
+    void          setIgnoresCombatArea(bool ignores) { m_ignoresCombatArea = ignores; }
+
 private:
     // Non-vtable Player helpers, all attested by their ELF manglings and direct callers. Keeping
     // these private avoids inventing a wider gameplay API for implementation details.
@@ -599,6 +603,7 @@ protected:
     /* +0x334 */ world::CPersistentExplosionEffectManager* m_explosionEffects;   // the ctor argument
     // Private copy of the last supplied input, independent of later caller changes.
     /* +0x338 */ io::PlayerInput m_playerInput;      // 0x338..0x44B - the whole tail of the object
+    bool m_ignoresCombatArea;                        // [CHOSEN, not recovered] ctor false
 };
 
 

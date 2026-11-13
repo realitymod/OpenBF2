@@ -701,6 +701,7 @@ void ServerGameLogic::uPlayingInsideGameArea(float deltaTime)
         world::IPlayer* player = *it;
 
         if (!player->getIsAlive()                                                    // +0x6C
+            || static_cast<Player*>(player)->m_ignoresCombatArea                    // [CHOSEN, not recovered]
             || CombatAreaManager::getInstance()->isPlayerInside(player))
         {
             static_cast<Player*>(player)->m_timeOutSideWorld = 0.0f;                 // Player +0x24C

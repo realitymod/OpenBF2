@@ -261,6 +261,7 @@ Player::Player(int index, world::CPersistentExplosionEffectManager* explosionEff
     , m_byte330(false)
     , m_byte331(false)
     , m_explosionEffects(explosionEffects)
+    , m_ignoresCombatArea(false)
 {
     // Retail installs PlayerNetworkable's vtable on the networkable subobject here; this model
     // uses Player's overrides. Initialize the weapon arrays and input state separately.

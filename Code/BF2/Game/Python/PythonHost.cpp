@@ -45,6 +45,7 @@
 #include "../../Scene/Object/ObjectPredicator.h"   // world::ObjectPredicator - the trigger sweep's base
 #include "../Objects/IPlayer.h"          // the real interface - to_py(IPlayer*) reads getId
 #include "../../IO/Input/PlayerInput.h"  // pmgr_p_getInput
+#include "../GameLogic/Player.h"         // pmgr_p_setIgnoreCombatArea
 #include "../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h" // pmgr_p_get vehicle/weapon
 #include "../Objects/ISoldier.h"          // pmgr_p_get kit query
 #include "../Objects/Game/Kit.h"          // ISoldier::getKit -> IObject conversion
@@ -942,6 +943,7 @@ PyObject* pmgr_isIndexValid(PyObject*, PyObject*);
 PyObject* pmgr_p_get(PyObject*, PyObject*);
 PyObject* pmgr_p_set(PyObject*, PyObject*);
 PyObject* pmgr_p_getInput(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* pmgr_p_setIgnoreCombatArea(PyObject*, PyObject*); //   [CHOSEN, not recovered]
 PyObject* pmgr_getScore(PyObject*, PyObject*);
 PyObject* pmgr_setScore(PyObject*, PyObject*);
 PyObject* pmgr_enableScoreEvents(PyObject*, PyObject*);
@@ -1437,6 +1439,29 @@ PyObject* pmgr_p_getInput(PyObject*, PyObject* args)
     }
 
     return PyFloat_FromDouble(player->getPlayerInput().inputs[inputId]);
+}
+
+// [CHOSEN, not recovered] Project Reality's combat-area exemption for jet pilots; not a retail host
+// method. host.pmgr_p_setIgnoreCombatArea(playerId, ignore): while set, the player is never counted
+// outside the combat areas, so the out-of-area countdown and damage stay off. Raises RuntimeError
+// for an unknown player.
+PyObject* pmgr_p_setIgnoreCombatArea(PyObject*, PyObject* args)
+{
+    int playerId;
+    int ignore;
+    if (py_arg<int>(args, 0, playerId) + py_arg<int>(args, 1, ignore))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    static_cast<Player*>(player)->setIgnoresCombatArea(ignore != 0);
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // pmgr_getScore - ELF 0x815AB50 (1476 B), PE 0x537360 (960 B). The string key set, map-clearing
@@ -2308,6 +2333,7 @@ PyMethodDef method_table[] =
     { "pmgr_p_get",                  pmgr_p_get,                         METH_VARARGS, 0 },
     { "pmgr_p_set",                  pmgr_p_set,                         METH_VARARGS, 0 },
     { "pmgr_p_getInput",             pmgr_p_getInput,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "pmgr_p_setIgnoreCombatArea",  pmgr_p_setIgnoreCombatArea,         METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "pmgr_getScore",               pmgr_getScore,                      METH_VARARGS, 0 },
     { "pmgr_setScore",               pmgr_setScore,                      METH_VARARGS, 0 },
     { "pmgr_enableScoreEvents",      pmgr_enableScoreEvents,             METH_VARARGS, 0 },
