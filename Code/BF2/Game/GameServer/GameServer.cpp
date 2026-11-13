@@ -4043,9 +4043,9 @@ void GameServer::adminToPlayerEvent(IEventWrapper& wrapper)
 }
 
 namespace {
-// The "is this player out of the fight" test the two player-message dispatchers and filterMessage
-// share: dead, or man-down (with the two LocalRevive channels exempting a man-down sender so a
-// downed player can still call for a medic).
+// The "is this player out of the fight" test serverPlayerMessageEvent and filterMessage share:
+// dead, or man-down (with the two LocalRevive channels exempting a man-down sender so a downed
+// player can still call for a medic). playerMessageEvent no longer applies it (Project Reality).
 inline bool chatSenderIsDown(GameServer::IEventWrapper& wrapper, world::IPlayer* sender)
 {
     if (!sender->getIsAlive())                                               // +0x6C
@@ -4056,7 +4056,8 @@ inline bool chatReceiverIsDown(world::IPlayer* receiver)
 {
     return !receiver->getIsAlive() || receiver->getIsManDown();
 }
-// filterMessage's own dead test (cases 4, 5, 14): alive / man-down only, no channel exemption.
+// filterMessage's own dead test (case 4; PR dropped it from 5 and 14): alive / man-down only, no
+// channel exemption.
 inline bool chatSenderIsDownNoRevive(world::IPlayer* sender)
 {
     return !sender->getIsAlive() || sender->getIsManDown();
@@ -4064,8 +4065,7 @@ inline bool chatSenderIsDownNoRevive(world::IPlayer* sender)
 } // namespace
 
 // Routes non-spam messages to started connections. Server channels bypass sender
-// requirements; other channels require a sender and restrict dead senders to dead
-// receivers before filterMessage decides delivery.
+// requirements; other channels require a sender, and filterMessage decides delivery.
 void GameServer::playerMessageEvent(IEventWrapper& wrapper)
 {
     world::IPlayer* const sender = wrapper.getSenderId() == -1
@@ -4090,13 +4090,9 @@ void GameServer::playerMessageEvent(IEventWrapper& wrapper)
         world::IPlayer* const player = connection->getPlayer();              // +0x18
         if (!player)
             continue;
-        if (wrapper.getChannel() != 12 && wrapper.getChannel() != 13)
-        {
-            const bool senderDown   = chatSenderIsDown(wrapper, sender);
-            const bool receiverDown = chatReceiverIsDown(player);
-            if (senderDown && receiverDown != senderDown)
-                continue;
-        }
+        // [CHOSEN, not recovered] Project Reality: dead and man-down senders reach living players
+        // too. Retail dropped their messages here for everyone but other dead or man-down players;
+        // PR's Windows server stores "not down" for every sender (allowDeadToChat, PE 0x445FD3).
         if (filterMessage(wrapper, sender, player))
             wrapper.sendMessage(static_cast<ServerConnection*>(connection));
     }
@@ -4180,8 +4176,8 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
         const float distanceSq = chatDistanceSq(sv, rv);
         if (wrapper.getChannel() == 18 && m_messageDistanceSqB >= distanceSq)   // +0xAC
             return true;
-        if (receiver->getIsCommander())
-            return false;
+        // [CHOSEN, not recovered] Project Reality's Linux server drops retail's "a commander never
+        // receives this" test here (allowDeadToChat, ELF 0x458451).
         if (sender->getSquadId() != receiver->getSquadId())                  // +0x10C
             return false;
         return filterTeamTail(wrapper, sender, receiver);
@@ -4200,9 +4196,9 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
 
     case 5:
     {
-        const bool senderDown   = chatSenderIsDownNoRevive(sender);
-        const bool receiverDown = chatReceiverIsDown(receiver);
-        if (sender == receiver || (senderDown && receiverDown != senderDown))
+        // [CHOSEN, not recovered] Project Reality's Linux server drops the dead-to-dead test here
+        // (allowDeadToChat, ELF 0x457F12).
+        if (sender == receiver)
             return false;
         if (wrapper.getFlags() == receiver->getSquadId())
             return receiver->getTeam() == sender->getTeam();
@@ -4301,9 +4297,9 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
 
     case 14:
     {
-        const bool senderDown   = chatSenderIsDownNoRevive(sender);
-        const bool receiverDown = chatReceiverIsDown(receiver);
-        if (sender == receiver || (senderDown && receiverDown != senderDown))
+        // [CHOSEN, not recovered] Project Reality's Linux server drops the dead-to-dead test here
+        // (allowDeadToChat, ELF 0x4587FF / 0x458819).
+        if (sender == receiver)
             return false;
         return wrapper.getFlags() == receiver->getId();                      // +0x14 vs +0x54
     }
