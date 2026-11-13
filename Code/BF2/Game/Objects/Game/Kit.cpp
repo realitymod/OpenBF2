@@ -378,11 +378,11 @@ void Kit::handlePickup(IPlayer* player, IObject* obj)
     if (obj->getTemplate()->getClassID() != CID_SoldierTemplate)
         return;
 
+    // [CHOSEN, not recovered] Project Reality drops the updateUnlockStatus() call retail makes here:
+    // it crashes now and then on pickup, and PR does not use unlocks. The level is still stored,
+    // but the kit keeps its default parts.
     if (m_chosenUnlockLevel == -1 && player)
-    {
         m_chosenUnlockLevel = player->getChosenUnlockLevel(player->getKit(), player->getTeam());
-        updateUnlockStatus();
-    }
 
     giveSoldierKitItems(obj, player);
 
