@@ -28,6 +28,7 @@
 #include "../../Objects/IWeaponObject.h"
 #include "../../Objects/IObjectTemplateComponent.h"
 #include "../../Objects/Weapons/DeviationComponents/SoldierDeviationComp.h"   // weapon deviation methods
+#include "../../Objects/Weapons/AmmoComponents/AmmoComp.h"                 // weapon ammo methods
 #include "../../Objects/Game/SupplyObject.h"
 #include "../../Objects/Game/Soldier.h"
 #include "../../Objects/ISoldier.h"
@@ -37,6 +38,7 @@
 #include "../../Objects/ControlPointTemplate.h"
 #include "../../Objects/GameLogicComp/IArmorGLComp.h"
 #include "../../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h"
+#include <algorithm>
 #include <map>
 
 #include <cstring>
@@ -313,6 +315,8 @@ PyObject* object_weapon_getTargetObject(PyObject*, PyObject*);     // [CHOSEN, n
 PyObject* object_weapon_getDeviationPenalties(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_weapon_setDeviationPenalties(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_weapon_getDeviationLimits(PyObject*, PyObject*);      // [CHOSEN, not recovered]
+PyObject* object_weapon_getAmmo(PyObject*, PyObject*);             // [CHOSEN, not recovered]
+PyObject* object_weapon_setAmmo(PyObject*, PyObject*);             // [CHOSEN, not recovered]
 PyObject* object_soldier_getStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
@@ -373,6 +377,8 @@ PyMethodDef meth_weapon_setDeviationPenalties
 PyMethodDef meth_weapon_getDeviationLimits
                                     = { "getDeviationLimits", object_weapon_getDeviationLimits,
                                                                                          METH_VARARGS, 0 };
+PyMethodDef meth_weapon_getAmmo     = { "getAmmo",            object_weapon_getAmmo,     METH_VARARGS, 0 };
+PyMethodDef meth_weapon_setAmmo     = { "setAmmo",            object_weapon_setAmmo,     METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getStamina = { "getStamina",         object_soldier_getStamina, METH_VARARGS, 0 };
 PyMethodDef meth_soldier_setStamina = { "setStamina",         object_soldier_setStamina, METH_VARARGS, 0 };
 PyMethodDef meth_soldier_setStaminaDissipation
@@ -506,6 +512,8 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_weapon_getDeviationPenalties);
         addSingleMethod(instance, &meth_weapon_setDeviationPenalties);
         addSingleMethod(instance, &meth_weapon_getDeviationLimits);
+        addSingleMethod(instance, &meth_weapon_getAmmo);
+        addSingleMethod(instance, &meth_weapon_setAmmo);
     }
 
     // [CHOSEN, not recovered] Project Reality's soldier stamina and pose methods; not in retail.
@@ -769,6 +777,58 @@ PyObject* object_weapon_getDeviationLimits(PyObject*, PyObject* args)
     return Py_BuildValue("((ff)(ff)(ff))", t->getTurnDevMax(), t->getTurnDevSub(),
                          t->getSpeedDevMax(), t->getSpeedDevSub(),
                          t->getMiscDevMax(), t->getMiscDevSub());
+}
+
+namespace {
+world::IWeaponAmmoComp* weaponAmmoComp(world::IObject* weapon)
+{
+    return static_cast<world::IWeaponAmmoComp*>(
+        weapon->queryComponent(world::IID_IWeaponAmmoComp, world::IID_IWeaponAmmoComp));
+}
+} // namespace
+
+// [CHOSEN, not recovered] weapon.getAmmo(): (rounds in the loaded magazine, spare magazines), or
+// None when the weapon has no ammo component.
+PyObject* object_weapon_getAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    world::IWeaponAmmoComp* const ammo = weaponAmmoComp(obj);
+    if (!ammo || ammo->getAmmo()->empty())
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    const std::vector<int>& mags = *ammo->getAmmo();
+    return Py_BuildValue("(ii)", mags[0], static_cast<int>(mags.size()) - 1);
+}
+
+// [CHOSEN, not recovered] weapon.setAmmo(loaded, spareMags): sets the loaded magazine's rounds and
+// the number of spare magazines (added ones are full), clamped to the template's magazine size and
+// count. Weapons with infinite ammo or magazines, or without an ammo component, are left alone.
+PyObject* object_weapon_setAmmo(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    int loaded = 0, spareMags = 0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<int>(args, 1, loaded);
+    int e2 = py_arg<int>(args, 2, spareMags);
+    if (e0 + e1 + e2)
+        return 0;
+
+    world::IWeaponAmmoComp* const ammo = weaponAmmoComp(obj);
+    if (ammo && ammo->getMagSize() >= 0 && ammo->getMaxNrOfMags() >= 0)
+    {
+        std::vector<int>& mags = *ammo->getAmmo();
+        const int maxSpares = ammo->getMaxNrOfMags() > 0 ? ammo->getMaxNrOfMags() - 1 : 0;
+        mags.resize(static_cast<std::size_t>(std::max(0, std::min(spareMags, maxSpares)) + 1),
+                    ammo->getMagSize());
+        mags[0] = std::max(0, std::min(loaded, ammo->getMagSize()));
+    }
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // [CHOSEN, not recovered] soldier.getStamina(): sprint stamina, 0.0 to 1.0.
