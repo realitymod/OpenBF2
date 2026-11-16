@@ -307,6 +307,8 @@ PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, n
 PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_teleport(PyObject*, PyObject*);                   // [CHOSEN, not recovered]
 PyObject* object_setSleepinessMax(PyObject*, PyObject*);           // [CHOSEN, not recovered]
+PyObject* object_getAngularVelocity(PyObject*, PyObject*);         // [CHOSEN, not recovered]
+PyObject* object_setAngularVelocity(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_getLatencyCompensatedPosition(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
 PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
@@ -355,6 +357,8 @@ PyMethodDef meth_projectile_setTimeToLive
 PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_setSleepinessMax   = { "setSleepinessMax",   object_setSleepinessMax,   METH_VARARGS, 0 };
+PyMethodDef meth_getAngularVelocity = { "getAngularVelocity", object_getAngularVelocity, METH_VARARGS, 0 };
+PyMethodDef meth_setAngularVelocity = { "setAngularVelocity", object_setAngularVelocity, METH_VARARGS, 0 };
 PyMethodDef meth_teleport           = { "teleport",           object_teleport,           METH_VARARGS, 0 };
 PyMethodDef meth_getLatencyCompensatedPosition
                                     = { "getLatencyCompensatedPosition",
@@ -495,6 +499,8 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_setVelocity);
         addSingleMethod(instance, &meth_teleport);
         addSingleMethod(instance, &meth_setSleepinessMax);
+        addSingleMethod(instance, &meth_getAngularVelocity);
+        addSingleMethod(instance, &meth_setAngularVelocity);
         addSingleMethod(instance, &meth_getLatencyCompensatedPosition);
         if (o->queryInterface(world::IID_ISoldier))
             addSingleMethod(instance, &meth_soldier_getOnGround);
@@ -568,6 +574,37 @@ PyObject* object_getVelocity(PyObject*, PyObject* args)
         return 0;
 
     return to_py(dynamicPhysicsNode(obj)->getPositionalSpeed());
+}
+
+// [CHOSEN, not recovered] obj.getAngularVelocity(): the physics node's rotational speed; (0, 0, 0)
+// for point physics and for a soldier in a vehicle.
+PyObject* object_getAngularVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    return to_py(dynamicPhysicsNode(obj)->getRotationalSpeed());
+}
+
+// [CHOSEN, not recovered] obj.setAngularVelocity((x, y, z)): wakes the physics node, then sets its
+// rotational speed. Point and soldier physics ignore it.
+PyObject* object_setAngularVelocity(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    Vec3 v;
+    v.x = v.y = v.z = 0.0f;
+
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<Vec3>(args, 1, v);
+    if (e0 + e1)
+        return 0;
+
+    world::IPhysicsNode* node = dynamicPhysicsNode(obj);
+    node->setIsAwake();
+    node->setRotationalSpeed(v);
+    Py_INCREF(Py_None);
+    return Py_None;
 }
 
 // [CHOSEN, not recovered] obj.setVelocity((x, y, z)): wakes the physics node, then sets its
