@@ -26,6 +26,8 @@
 #include "../../Objects/IObject.h"
 #include "../../Objects/IPlayer.h"
 #include "../../Objects/IWeaponObject.h"
+#include "../../Objects/IObjectTemplateComponent.h"
+#include "../../Objects/Weapons/DeviationComponents/SoldierDeviationComp.h"   // weapon deviation methods
 #include "../../Objects/Game/SupplyObject.h"
 #include "../../Objects/Game/Soldier.h"
 #include "../../Objects/ISoldier.h"
@@ -308,6 +310,9 @@ PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, n
 PyObject* object_supply_setSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
 PyObject* object_weapon_setHeat(PyObject*, PyObject*);             // [CHOSEN, not recovered]
 PyObject* object_weapon_getTargetObject(PyObject*, PyObject*);     // [CHOSEN, not recovered]
+PyObject* object_weapon_getDeviationPenalties(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_weapon_setDeviationPenalties(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* object_weapon_getDeviationLimits(PyObject*, PyObject*);      // [CHOSEN, not recovered]
 PyObject* object_soldier_getStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStamina(PyObject*, PyObject*);         // [CHOSEN, not recovered]
 PyObject* object_soldier_setStaminaDissipation(PyObject*, PyObject*);   // [CHOSEN, not recovered]
@@ -358,6 +363,15 @@ PyMethodDef meth_supply_setSupplyAmmo
 PyMethodDef meth_weapon_setHeat     = { "setHeat",            object_weapon_setHeat,     METH_VARARGS, 0 };
 PyMethodDef meth_weapon_getTargetObject
                                     = { "getTargetObject",    object_weapon_getTargetObject,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_weapon_getDeviationPenalties
+                                    = { "getDeviationPenalties", object_weapon_getDeviationPenalties,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_weapon_setDeviationPenalties
+                                    = { "setDeviationPenalties", object_weapon_setDeviationPenalties,
+                                                                                         METH_VARARGS, 0 };
+PyMethodDef meth_weapon_getDeviationLimits
+                                    = { "getDeviationLimits", object_weapon_getDeviationLimits,
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_soldier_getStamina = { "getStamina",         object_soldier_getStamina, METH_VARARGS, 0 };
 PyMethodDef meth_soldier_setStamina = { "setStamina",         object_soldier_setStamina, METH_VARARGS, 0 };
@@ -489,6 +503,9 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     {
         addSingleMethod(instance, &meth_weapon_setHeat);
         addSingleMethod(instance, &meth_weapon_getTargetObject);
+        addSingleMethod(instance, &meth_weapon_getDeviationPenalties);
+        addSingleMethod(instance, &meth_weapon_setDeviationPenalties);
+        addSingleMethod(instance, &meth_weapon_getDeviationLimits);
     }
 
     // [CHOSEN, not recovered] Project Reality's soldier stamina and pose methods; not in retail.
@@ -676,6 +693,82 @@ PyObject* object_weapon_getTargetObject(PyObject*, PyObject* args)
 
     return to_py(static_cast<world::IWeaponObject*>(obj->queryInterface(world::IID_IWeaponObject))
                      ->getTargetObject());
+}
+
+namespace {
+// The weapon's soldier deviation component, or null when it has another kind (or none).
+world::SoldierDeviationComp* soldierDeviationComp(world::IObject* weapon)
+{
+    world::IObjectTemplateComponent* const deviationTemplate =
+        const_cast<world::IObjectTemplate*>(weapon->getTemplate())
+            ->queryComponent(world::IID_IWeaponDeviationCompTemplate);
+    if (!deviationTemplate
+        || !deviationTemplate->queryImplementation(world::CID_SoldierDeviationCompTemplate))
+        return 0;
+    return static_cast<world::SoldierDeviationComp*>(static_cast<world::IWeaponDeviationComp*>(
+        weapon->queryComponent(world::IID_IWeaponDeviationComp, world::IID_IWeaponDeviationComp)));
+}
+} // namespace
+
+// [CHOSEN, not recovered] weapon.getDeviationPenalties(): the (turn, speed, misc) deviation the
+// weapon's soldier deviation component has accumulated, or None for other deviation kinds.
+PyObject* object_weapon_getDeviationPenalties(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    world::SoldierDeviationComp* const deviation = soldierDeviationComp(obj);
+    if (!deviation)
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    float turn, speed, misc;
+    deviation->getPenalties(turn, speed, misc);
+    return Py_BuildValue("(fff)", turn, speed, misc);
+}
+
+// [CHOSEN, not recovered] weapon.setDeviationPenalties(turn, speed, misc): replaces them; each then
+// decays as usual. No effect on other deviation kinds.
+PyObject* object_weapon_setDeviationPenalties(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    double turn = 0.0, speed = 0.0, misc = 0.0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<double>(args, 1, turn);
+    int e2 = py_arg<double>(args, 2, speed);
+    int e3 = py_arg<double>(args, 3, misc);
+    if (e0 + e1 + e2 + e3)
+        return 0;
+
+    world::SoldierDeviationComp* const deviation = soldierDeviationComp(obj);
+    if (deviation)
+        deviation->setPenalties(static_cast<float>(turn), static_cast<float>(speed),
+                                static_cast<float>(misc));
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] weapon.getDeviationLimits(): ((turnMax, turnSettle), (speedMax,
+// speedSettle), (miscMax, miscSettle)) from the soldier deviation template, or None. Settle is the
+// amount each penalty decays by.
+PyObject* object_weapon_getDeviationLimits(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    if (py_argo(args, 0, obj))
+        return 0;
+
+    world::SoldierDeviationComp* const deviation = soldierDeviationComp(obj);
+    if (!deviation)
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+    const world::SoldierDeviationCompTemplate* const t = deviation->getSoldierTemplate();
+    return Py_BuildValue("((ff)(ff)(ff))", t->getTurnDevMax(), t->getTurnDevSub(),
+                         t->getSpeedDevMax(), t->getSpeedDevSub(),
+                         t->getMiscDevMax(), t->getMiscDevSub());
 }
 
 // [CHOSEN, not recovered] soldier.getStamina(): sprint stamina, 0.0 to 1.0.
