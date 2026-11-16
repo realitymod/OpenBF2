@@ -494,6 +494,12 @@ BF2_SV_SETTER(radioBlockedDurationTime, int, m_radioBlockedDuration,  setRadioBl
 // Clamped to [1, 100]: 1 runs the scope pass whenever the connection's turn comes, 100 waits ~10 s.
 BF2_SV_CLAMPED(ghostScopeRefreshTicks, int, m_ghostScopeRefreshTicks, 1, 100)
 
+// [CHOSEN, not recovered] Project Reality's network limits; not retail properties. The ranges are
+// the ones PR's scripts enforced.
+BF2_SV_CLAMPED(actionBufferMaxSize, int, m_actionBufferMaxSize, 2, 4)
+BF2_SV_CLAMPED(maxPacketSize,       int, m_maxPacketSize,       0x380, 0x540)
+BF2_SV_FIELD(connectionTimeout, int, m_connectionTimeout)
+
 //  / 0x82AD88 -> ctors 0x4D74E0 / 0x4D76D0, executors 0x4D7630 / 0x4D7820. Both GET through
 // compound accessors and SET raw: getUseGlobalRank is `ranked && internet && field`, and
 // getUseGlobalUnlocks is `ranked || (internet && field)`. So on a LAN server both report false (rank)

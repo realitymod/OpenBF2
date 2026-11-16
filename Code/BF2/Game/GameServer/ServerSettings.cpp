@@ -131,6 +131,9 @@ void ServerSettings::save(std::ostream& out)
     out << "sv.numReservedSlots " << m_numReservedSlots << std::endl;
     out << "sv.friendlyFireWithMines " << m_friendlyFireWithMines << std::endl;
     out << "sv.ghostScopeRefreshTicks " << m_ghostScopeRefreshTicks << std::endl;   // [CHOSEN, not recovered]
+    out << "sv.actionBufferMaxSize " << m_actionBufferMaxSize << std::endl;         // [CHOSEN, not recovered]
+    out << "sv.maxPacketSize " << m_maxPacketSize << std::endl;                     // [CHOSEN, not recovered]
+    out << "sv.connectionTimeout " << m_connectionTimeout << std::endl;             // [CHOSEN, not recovered]
 }
 
 // Serializes settings and writes the script in one operation. Returns false for
@@ -215,6 +218,9 @@ ServerSettings::ServerSettings()
     m_friendlyFireWithMines        = false;    // +0x100
     m_noVehicles                   = false;    // +0x101
     m_ghostScopeRefreshTicks       = 4;        // [CHOSEN, not recovered] Project Reality's value
+    m_actionBufferMaxSize          = 2;        // [CHOSEN, not recovered] Project Reality's values
+    m_maxPacketSize                = 0x540;
+    m_connectionTimeout            = 45000;
 
     setMaxPlayers(16);                         // the result string is discarded
 }

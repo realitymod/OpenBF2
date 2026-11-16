@@ -44,7 +44,7 @@ NetServer::NetServer()
     , m_bInit(false)                                    // +0x47C
     , m_shuttingDown(false)                             // +0x47D  receive-thread exit
     , m_version(0)                                      // +0x484
-    , m_connectionTimeOut(10000)                        // +0x488
+    , m_connectionTimeOut(45000)                        // +0x488 [CHOSEN, not recovered] PR: retail 10000
     , m_time(0)                                         // +0x4A8
     , m_processedPacketCount(0)                         // +0x4AC
     , m_dword4B0(0)                                     // +0x4B0

@@ -478,6 +478,7 @@ bool GameServer::startServer(const std::string& a1, int port, int /* dead - neve
     }
 
     m_netServer->setPassword(serverSettings->getPassword());        // +0x40
+    m_netServer->setConnectionTimeOut(static_cast<unsigned int>(serverSettings->m_connectionTimeout));   // [CHOSEN, not recovered]
 #if !DEDICATED
     // [PLATFORM] BF2.exe 0x4CACC2..0x4CACF9, folded away in the dedicated ELF (): a
     // listen server keeps one connection for its own player - getMaxPlayers minus one, and 1 when
@@ -2998,6 +2999,8 @@ void GameServer::setConnectionType(int connectionId, ConnectionType type)
     {
         const int* const row = g_connectionTypes[static_cast<int>(type)];
         cc->m_packetSizeOverride = row[3];           // +0x18
+        if (static_cast<int>(type) == 5)             // [CHOSEN, not recovered] sv.maxPacketSize
+            cc->m_packetSizeOverride = serverSettings->m_maxPacketSize;
         cc->m_dword14            = row[1];           // +0x14
     }
 
@@ -3175,21 +3178,22 @@ bool GameServer::isRecordingDemo() const
     return false;
 }
 
-// : for every connection with a player, trim its ActionBuffer down to 4 entries
-// (popping the front while size() > 4) and resetTickCounter(); then clear the queued local inputs.
-// A connection without a Player advances to the next map node at 0x80B4BE0; it does not bypass the
-// remaining connections or the final m_playerInputs clear.
+// : for every connection with a player, trim its ActionBuffer down to sv.actionBufferMaxSize
+// entries (popping the front while larger) and resetTickCounter(); then clear the queued local
+// inputs. A connection without a Player advances to the next map node at 0x80B4BE0; it does not
+// bypass the remaining connections or the final m_playerInputs clear.
 void GameServer::clearPlayerActions()
 {
+    const int maxSize = serverSettings->m_actionBufferMaxSize;     // [CHOSEN, not recovered] retail 4
     for (std::map<unsigned char, IClientConnection*>::iterator it = m_connections.begin();
          it != m_connections.end(); ++it) {
         world::IPlayer* const player = it->second->getPlayer();      // ServerConnection::getPlayer, vtable +0x18
         if (!player)
             continue;
 
-        if (player->getActionBuffer()->size() > 4)                   // something older than the last 4?
+        if (player->getActionBuffer()->size() > maxSize)             // something older than the newest?
         {
-            while (player->getActionBuffer()->size() > 4)            // drop the oldest until 4 remain
+            while (player->getActionBuffer()->size() > maxSize)      // drop the oldest
                 player->getActionBuffer()->m_entries.pop_front();
             player->resetTickCounter();                              // IPlayer +0xDC
         }

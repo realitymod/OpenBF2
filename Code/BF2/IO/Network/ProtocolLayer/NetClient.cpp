@@ -67,7 +67,7 @@ NetClient::NetClient()
     , m_pingRingFull(false)                           // +0x011
     , m_connectionId(0)                               // +0x0A4
     , m_version(0)                                    // +0x0AC - the PE stores the encoding of 0
-    , m_connectionTimeOut(10000)                      // +0x0B0
+    , m_connectionTimeOut(45000)                      // +0x0B0 [CHOSEN, not recovered] PR: retail 10000
     , m_connectAttemptsLeft(0)                        // +0x0C0 - the canary at its "spent" value
     , m_connection(0)                                 // +0x0C4
     , m_socket(0)                                     // +0x0E0
