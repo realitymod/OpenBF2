@@ -306,6 +306,7 @@ PyObject* object_projectile_setTimeToLive(PyObject*, PyObject*);   // [CHOSEN, n
 PyObject* object_getVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_setVelocity(PyObject*, PyObject*);                // [CHOSEN, not recovered]
 PyObject* object_teleport(PyObject*, PyObject*);                   // [CHOSEN, not recovered]
+PyObject* object_setSleepinessMax(PyObject*, PyObject*);           // [CHOSEN, not recovered]
 PyObject* object_getLatencyCompensatedPosition(PyObject*, PyObject*);   // [CHOSEN, not recovered]
 PyObject* object_soldier_getOnGround(PyObject*, PyObject*);        // [CHOSEN, not recovered]
 PyObject* object_supply_getSupplyAmmo(PyObject*, PyObject*);       // [CHOSEN, not recovered]
@@ -353,6 +354,7 @@ PyMethodDef meth_projectile_setTimeToLive
                                                                                          METH_VARARGS, 0 };
 PyMethodDef meth_getVelocity        = { "getVelocity",        object_getVelocity,        METH_VARARGS, 0 };
 PyMethodDef meth_setVelocity        = { "setVelocity",        object_setVelocity,        METH_VARARGS, 0 };
+PyMethodDef meth_setSleepinessMax   = { "setSleepinessMax",   object_setSleepinessMax,   METH_VARARGS, 0 };
 PyMethodDef meth_teleport           = { "teleport",           object_teleport,           METH_VARARGS, 0 };
 PyMethodDef meth_getLatencyCompensatedPosition
                                     = { "getLatencyCompensatedPosition",
@@ -492,6 +494,7 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
         addSingleMethod(instance, &meth_getVelocity);
         addSingleMethod(instance, &meth_setVelocity);
         addSingleMethod(instance, &meth_teleport);
+        addSingleMethod(instance, &meth_setSleepinessMax);
         addSingleMethod(instance, &meth_getLatencyCompensatedPosition);
         if (o->queryInterface(world::IID_ISoldier))
             addSingleMethod(instance, &meth_soldier_getOnGround);
@@ -583,6 +586,22 @@ PyObject* object_setVelocity(PyObject*, PyObject* args)
     world::IPhysicsNode* node = dynamicPhysicsNode(obj);
     node->setIsAwake();
     node->setPositionalSpeed(v);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] obj.setSleepinessMax(ticks): how many ticks the object's physics node
+// stays awake without moving before it sleeps (retail 30).
+PyObject* object_setSleepinessMax(PyObject*, PyObject* args)
+{
+    world::IObject* obj = 0;
+    int ticks = 0;
+    int e0 = py_argo(args, 0, obj);
+    int e1 = py_arg<int>(args, 1, ticks);
+    if (e0 + e1)
+        return 0;
+
+    dynamicPhysicsNode(obj)->setSleepTimeout(ticks);
     Py_INCREF(Py_None);
     return Py_None;
 }
