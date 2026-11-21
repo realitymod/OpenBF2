@@ -468,17 +468,22 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
 
         const bool skipping = !stack.empty() && !stack.back().executing;
 
-        // Unknown names compare literally. A quoted operand compares without its quotes, so PR's
-        // `elseIf v_arg2 == "ch"` matches the unquoted value run passes in v_arg2.
-        auto evaluateCondition = [this, &kin]() {
-            std::string lhs, op, rhs, value, error;
-            kin >> lhs; kin >> op; kin >> rhs;
-            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
-            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
-            for (std::string* operand : {&lhs, &rhs})
-                if (operand->size() >= 2 && (*operand)[0] == '"' && (*operand)[operand->size() - 1] == '"')
-                    *operand = operand->substr(1, operand->size() - 2);
-            return console_expr(lhs, op, rhs, error);
+        // As retail (prbf2_l64ded OldConsole::handleCommand): operands go through getArgs, so quotes
+        // are stripped and every operand is expanded, and a condition that fails to evaluate opens
+        // no block. PR content relies on both: `elseIf v_arg2 == "ch"`, and a server-side
+        // `if v_arg1 != BF2Editor` with an empty v_arg1 that errors and so runs its body.
+        auto evaluateCondition = [this, &kin](bool& cond, std::string& error) {
+            std::string operands[13], raw[13];
+            const int expandFrom = (m_currentLevel && m_currentLevel->m_unknown18) ? 11 : 1;
+            const int count = getArgs(kin, operands, raw, 13, error, expandFrom - 1);
+            if (count < 0)
+                return false;
+            if (count == 0 || count > 3)
+            {
+                error = "Error: Syntax error in expression!";
+                return false;
+            }
+            return calcBooleanExpr(operands[0], operands[1], operands[2], cond, error);
         };
 
         if (compareIgnoreCase(kw, "if") == 0)
@@ -488,7 +493,13 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 ++stack.back().skipNesting;              // nested if in a dead branch: count only
                 return 1;
             }
-            const bool cond = evaluateCondition();
+            bool cond = false;
+            std::string error;
+            if (!evaluateCondition(cond, error))
+            {
+                result = error;
+                return 2;
+            }
             BranchState next;
             next.executing = cond;
             next.branchTaken = cond;
@@ -501,7 +512,13 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
             if (skipping && stack.back().skipNesting > 0) return 1;
             if (stack.empty()) { result = "Can not have an \"elseIf\" without an \"if\"!"; return 2; }
             if (stack.back().branchTaken) { stack.back().executing = false; return 1; }
-            const bool cond = evaluateCondition();
+            bool cond = false;
+            std::string error;
+            if (!evaluateCondition(cond, error))
+            {
+                result = error;
+                return 2;
+            }
             stack.back().executing = cond;
             stack.back().branchTaken = cond;
             return 1;
