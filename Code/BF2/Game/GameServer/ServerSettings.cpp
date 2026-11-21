@@ -266,8 +266,10 @@ std::string ServerSettings::setInternet(bool value)
 }
 
 // Sets the player limit, refusing a changed value after server initialization.
-// Caps the request at 64 without a lower bound; a nonzero command-line override
+// Caps the request at 100 without a lower bound; a nonzero command-line override
 // takes precedence. Returns an empty string on success or the refusal text.
+// [CHOSEN, not recovered] Retail caps at 64. PR's server patches the cap out and admits 100
+// through its connection pool; capping at NetServer::ConnectionPoolSize keeps one per player.
 std::string ServerSettings::setMaxPlayers(int value)
 {
     IGameServer* server = 0;
@@ -277,7 +279,7 @@ std::string ServerSettings::setMaxPlayers(int value)
     if (value != m_maxPlayers && server != 0 && server->getInitComplete())   // vt +0x88
         return std::string("Cannot change sv.maxPlayers while running.");
 
-    int clamped = (value < 65) ? value : 64;              // upper clamp only
+    int clamped = (value < 101) ? value : 100;            // upper clamp only
 
     if (settings != 0)
     {
