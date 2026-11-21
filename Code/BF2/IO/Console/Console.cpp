@@ -468,6 +468,19 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
 
         const bool skipping = !stack.empty() && !stack.back().executing;
 
+        // Unknown names compare literally. A quoted operand compares without its quotes, so PR's
+        // `elseIf v_arg2 == "ch"` matches the unquoted value run passes in v_arg2.
+        auto evaluateCondition = [this, &kin]() {
+            std::string lhs, op, rhs, value, error;
+            kin >> lhs; kin >> op; kin >> rhs;
+            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
+            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
+            for (std::string* operand : {&lhs, &rhs})
+                if (operand->size() >= 2 && (*operand)[0] == '"' && (*operand)[operand->size() - 1] == '"')
+                    *operand = operand->substr(1, operand->size() - 2);
+            return console_expr(lhs, op, rhs, error);
+        };
+
         if (compareIgnoreCase(kw, "if") == 0)
         {
             if (skipping)
@@ -475,12 +488,7 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 ++stack.back().skipNesting;              // nested if in a dead branch: count only
                 return 1;
             }
-            std::string lhs, op, rhs, value;
-            kin >> lhs; kin >> op; kin >> rhs;
-            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
-            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
-            std::string error;
-            const bool cond = console_expr(lhs, op, rhs, error);
+            const bool cond = evaluateCondition();
             BranchState next;
             next.executing = cond;
             next.branchTaken = cond;
@@ -493,12 +501,7 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
             if (skipping && stack.back().skipNesting > 0) return 1;
             if (stack.empty()) { result = "Can not have an \"elseIf\" without an \"if\"!"; return 2; }
             if (stack.back().branchTaken) { stack.back().executing = false; return 1; }
-            std::string lhs, op, rhs, value;
-            kin >> lhs; kin >> op; kin >> rhs;
-            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
-            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
-            std::string error;
-            const bool cond = console_expr(lhs, op, rhs, error);
+            const bool cond = evaluateCondition();
             stack.back().executing = cond;
             stack.back().branchTaken = cond;
             return 1;
