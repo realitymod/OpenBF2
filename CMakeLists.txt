@@ -588,20 +588,12 @@ endfunction()
 # vendored PC/pyconfig.h; Linux uses the configure-generated pyconfig.h vendored under
 # External/python-embedded/linux/ (a chosen path - see that directory's README).
 if(BF2_BUILD_LINUX)
-    # [CHOSEN, not recovered] The Linux server embeds Project Reality's prebuilt Python 2.7
-    # (TASKS.md T0.8), PR's libdice_py.so. PR built it with a 32-bit Py_ssize_t (PyTuple_Size reads
-    # ob_size with movslq; tp_flags sits at +0xa0) and without the Py_InitModule4_64 rename, so its
-    # object layout matches the 2.3.4 headers. PR's own server binary is compiled against 2.3.4
-    # headers and runs on it; this build does the same. The stock 2.7 headers do not match it.
-    set(BF2_PYTHON_INCLUDE_DIRS
-        "${BF2_EXTERNAL_ROOT}/python-embedded/linux"
-        "${BF2_EXTERNAL_ROOT}/python-embedded/py-src-2.3.4/Include"
-    )
-    set(BF2_PYTHON_LIBRARY "" CACHE FILEPATH
-        "Project Reality's prebuilt Python 2.7 libdice_py.so (bin/amd-64 of the PR server)")
-    if(NOT EXISTS "${BF2_PYTHON_LIBRARY}")
-        message(FATAL_ERROR "Set BF2_PYTHON_LIBRARY to PR's libdice_py.so (bin/amd-64).")
-    endif()
+    # [CHOSEN, not recovered] The Linux server embeds the system's stock Python 2.7 (libpython2.7,
+    # Ubuntu 22.04's libpython2.7-dev) instead of retail's 2.3.4, so Project Reality's 2.7 scripts
+    # run unchanged. Stock 2.7 has a 64-bit Py_ssize_t and renames Py_InitModule4 to
+    # Py_InitModule4_64, so PR's prebuilt libdice_py.so and its extension modules do not load here.
+    find_package(Python2 2.7 REQUIRED COMPONENTS Development)
+    set(BF2_PYTHON_INCLUDE_DIRS ${Python2_INCLUDE_DIRS})
 else()
     set(BF2_PYTHON_INCLUDE_DIRS
         "${BF2_EXTERNAL_ROOT}/python-embedded/py-src-2.3.4/Include"
@@ -974,12 +966,9 @@ endif()
 set(BF2_DEDICATED_OUTPUT_DIR "${BF2_DEDICATED_DEFAULT_OUTPUT_DIR}" CACHE PATH
     "Where ${BF2_DEDICATED_OUTPUT_NAME}.exe is written (never the retail game directory)")
 if(BF2_BUILD_LINUX)
-    # [CHOSEN, not recovered] PR's prebuilt Python 2.7 stands in for the dice_py target. Its SONAME
-    # is libpython2.7.so.1.0, so that is the DT_NEEDED name and the file staged beside `bf2`.
-    add_library(dice_py SHARED IMPORTED)
-    set_target_properties(dice_py PROPERTIES
-        IMPORTED_LOCATION "${BF2_PYTHON_LIBRARY}"
-        IMPORTED_SONAME "libpython2.7.so.1.0")
+    # [CHOSEN, not recovered] The system libpython2.7 stands in for the dice_py target.
+    add_library(dice_py INTERFACE)
+    target_link_libraries(dice_py INTERFACE Python2::Python)
 else()
     set(BF2_DICE_PY_LIB "${BF2_DICE_PY_DEFAULT_DIR}/dice_py.lib" CACHE FILEPATH
         "Architecture-matched dice_py import library")
@@ -1037,14 +1026,7 @@ endif()
 # NOTE: the guard is evaluated at CONFIGURE time, exactly like the .lib check below it. If the DLL
 # is built later by Code/Build/python/build_python.cmd, re-run CMake once so this rule appears.
 if(BF2_BUILD_LINUX)
-    # Stage PR's Python under its SONAME beside the executable, which carries an $ORIGIN rpath
-    # (below), so the pair can be copied anywhere together.
-    add_custom_command(TARGET "${BF2_DEDICATED_TARGET}" POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${BF2_PYTHON_LIBRARY}" "${BF2_DEDICATED_OUTPUT_DIR}/libpython2.7.so.1.0"
-        COMMENT "Staging PR's Python 2.7 beside ${BF2_DEDICATED_OUTPUT_NAME}"
-        VERBATIM
-    )
+    # The system libpython2.7 is resolved from the default library path; nothing to stage.
 elseif(EXISTS "${BF2_DICE_PY_DLL}")
     add_custom_command(TARGET "${BF2_DEDICATED_TARGET}" POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different

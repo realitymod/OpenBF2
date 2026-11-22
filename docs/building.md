@@ -93,18 +93,25 @@ when no architecture argument is supplied and also runs its interpreter check.
 
 ## Linux and WSL
 
-Use Linux x86-64 with CMake 3.21 or newer, Ninja, GCC or Clang, and ncurses development
-headers (`libncurses-dev` on Debian). From the repository root:
+Use Linux x86-64 with CMake 3.21 or newer, Ninja, GCC or Clang, ncurses development headers
+(`libncurses-dev` on Debian) and the system Python 2.7 (`libpython2.7-dev`; Ubuntu 22.04 and
+Debian 11 are the last releases that ship it). From the repository root:
 
 ```bash
 cmake --preset linux-x64 -B ~/bf2-linux-local -DBF2_GAME_DIR="/path/to/Battlefield 2"
-cmake --build ~/bf2-linux-local --target bf2 dice_py_check_run
+cmake --build ~/bf2-linux-local --target bf2
 ```
 
 Under WSL, keep the build directory in the Linux filesystem. The Linux-only preset is
-available when CMake itself runs on Linux. CMake builds `libdice_py.so` beside `bf2`;
-the executable uses an `$ORIGIN` runtime search path to find it. `dice_py_check` builds
-the check executable; `dice_py_check_run` builds and runs it.
+available when CMake itself runs on Linux.
+
+`[CHOSEN, not recovered]` The Linux server embeds the system's stock Python 2.7 (`libpython2.7`)
+instead of retail's 2.3.4, so Project Reality's 2.7 scripts run unchanged. The engine compiles
+against the 2.7 headers on Linux and the vendored 2.3.4 headers on Windows. Stock 2.7 has a
+64-bit `Py_ssize_t` and exports `Py_InitModule4_64`, so Project Reality's prebuilt
+`libdice_py.so` and its extension modules do not load; the system's standard library and
+extension modules replace them. Project Reality's `_realitycore` is compiled into the engine
+(`Code/BF2/External/realitycore`).
 
 `BF2_LINUX_STATIC_RUNTIME` defaults to `ON`, linking libstdc++ and libgcc statically.
 glibc and the other system dependencies remain dynamic. Pass
