@@ -362,6 +362,17 @@ for %%F in ("%ROOT%\External\TinyXML\tinystr.cpp" "%ROOT%\External\TinyXML\tinyx
     )
 )
 
+rem [CHOSEN, not recovered] Project Reality's _realitycore module, which PythonHost::initialize
+rem registers as a built-in. C flags plus the Python headers. See External\realitycore.
+cl %CFLAGS% %PYINC% /Fo"%OUT%\\" "%ROOT%\External\realitycore\_realitycore.c" >nul 2>&1
+if errorlevel 1 (
+    set /a BAD+=1
+    echo   COMPILE FAIL _realitycore.c
+) else (
+    set /a OK+=1
+    echo "%OUT%\_realitycore.obj">>"%ENGINE_RSP%"
+)
+
 echo compiled: !OK!   failed: !BAD!
 
 rem The link is EXPECTED to fail while gaps remain. Its output IS the report.

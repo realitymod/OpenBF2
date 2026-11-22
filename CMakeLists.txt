@@ -742,6 +742,18 @@ source_group(TREE "${BF2_EXTERNAL_ROOT}/zlib-1.2.3"
     FILES ${bf2_zlib_sources}
 )
 
+# [CHOSEN, not recovered] Project Reality's _realitycore module, registered as a built-in by
+# PythonHost::initialize. Every image that runs game scripts links it. See External/realitycore.
+set(bf2_realitycore_sources "${BF2_EXTERNAL_ROOT}/realitycore/_realitycore.c")
+add_library(bf2_realitycore_objects OBJECT ${bf2_realitycore_sources})
+bf2_set_image(bf2_realitycore_objects 1)
+bf2_configure_c_target(bf2_realitycore_objects)
+target_include_directories(bf2_realitycore_objects PRIVATE ${BF2_PYTHON_INCLUDE_DIRS})
+source_group(TREE "${BF2_EXTERNAL_ROOT}/realitycore"
+    PREFIX "External/realitycore"
+    FILES ${bf2_realitycore_sources}
+)
+
 # =================================================================================================
 # bf2_gamespy_objects - the GameSpy SDK modules the recovered MatchMaking / CD-key backend links
 # against (2026-08-24). Stock upstream C, LINKED not reversed (AGENTS.md) - the SAME file set
@@ -885,6 +897,7 @@ add_library(bf2_recovered STATIC
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
 )
 set_target_properties(bf2_recovered PROPERTIES
     LINKER_LANGUAGE CXX
@@ -979,6 +992,7 @@ add_executable("${BF2_DEDICATED_TARGET}"
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
 )
 # ★ THE ENTRY POINT IS Game/Main/BF2.cpp's PRODUCTION `main` (2026-08-24), inside bf2_engine_objects -
 # NOT Code/Build/bootmain.cpp. bootmain is the diagnostic HARNESS (bounded frames, probes, fault
@@ -1404,6 +1418,7 @@ add_executable(bf2_client EXCLUDE_FROM_ALL
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
     $<TARGET_OBJECTS:bf2_gamespy_sb_objects>
     $<TARGET_OBJECTS:bf2_gamespy_gp_objects>
     $<TARGET_OBJECTS:bf2_gamespy_cdkeyc_objects>
@@ -1657,6 +1672,7 @@ add_executable(bf2_client_linkcheck EXCLUDE_FROM_ALL
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
     $<TARGET_OBJECTS:bf2_gamespy_sb_objects>
     $<TARGET_OBJECTS:bf2_gamespy_gp_objects>
     $<TARGET_OBJECTS:bf2_gamespy_cdkeyc_objects>

@@ -62,6 +62,9 @@
 #include <set>
 #include <vector>
 
+// Project Reality's _realitycore module, vendored under External/realitycore.
+extern "C" void init_realitycore(void);
+
 namespace dice {
 namespace hfe {
 
@@ -2527,6 +2530,16 @@ bool PythonHost::initialize(bool minimal)
 
     // Skip import site; the game installs its own Python module search path.
     Py_NoSiteFlag = 1;
+
+    // [CHOSEN, not recovered] PR's scripts import _realitycore. Built-in modules are found before
+    // sys.path, so this also shadows PR's prebuilt _realitycore.so. See External/realitycore.
+    // The inittab outlives Py_Finalize, so a shutdown/initialize cycle must not append it again.
+    static bool realitycoreRegistered = false;
+    if (!realitycoreRegistered)
+    {
+        PyImport_AppendInittab(const_cast<char*>("_realitycore"), init_realitycore);
+        realitycoreRegistered = true;
+    }
 
     Py_Initialize();
     // Install the game module search path.
