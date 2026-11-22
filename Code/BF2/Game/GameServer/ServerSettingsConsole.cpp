@@ -68,15 +68,9 @@ std::string svNumReservedSlotsSet(int value)
     return svReceiver()->setNumReservedSlots(value);
 }
 
-// [CHOSEN, not recovered] Release configurations floor the requested player count
-// at two; development configurations retain the raw setter for single-player tests.
-// The getter supplies the effective value.
+// Stores the raw value; the getter applies the ranked override.
 void svNumPlayersNeededToStartSet(int value)
 {
-#if defined(NDEBUG)
-    if (value < 2)
-        value = 2;
-#endif
     svReceiver()->m_playersNeededToStart = value;
 }
 
