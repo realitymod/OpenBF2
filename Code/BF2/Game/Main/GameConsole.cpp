@@ -134,6 +134,17 @@ BF2_CONSOLE_METHOD_1_STATIC_ACTIVE(sayAll, gameSayAll, queryGameServer() != 0,
 BF2_CONSOLE_METHOD_2_STATIC_ACTIVE(sayTeam, gameSayTeam, queryGameServer() != 0,
                                    int, std::string, kGameConsoleTag)
 
+// squadManager.listSquads returns one "id:N <name> is private./public." line per squad of the team.
+// Available while a game exists. The SquadManager object's other retail methods (joinSquad,
+// leaveSquad, makeMeCommander, popNextCommanderApplicant, changeSquadName, listSquadMembers) are
+// not bound yet.
+BF2_CONSOLE_OBJECT("SquadManager", 2, 0)
+namespace {
+std::string squadManagerListSquads(int team) { return ::dice::hfe::game->listSquads(team); }
+} // namespace
+BF2_CONSOLE_METHOD_1_RET_ACTIVE(listSquads, squadManagerListSquads, std::string,
+                                ::dice::hfe::game != 0, int, kGameConsoleTag)
+
 #if !DEDICATED
 // Client Game properties at access level 1. [UNRESOLVED] Dedicated registration
 // of these properties remains split pending executor verification; sayAll/sayTeam
