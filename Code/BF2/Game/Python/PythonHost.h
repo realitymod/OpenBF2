@@ -126,6 +126,7 @@ PyRef buildArgs(world::IObject* const& a0);                  // [CHOSEN, not rec
 PyRef buildArgs(world::IObject* const& a0, world::IObject* const& a1);   // [CHOSEN, not recovered] ProjectileCreated
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1);                // enterVehicle's event 23
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, const bool& a2); // enterVehicle's event 21
+PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, world::IObject* const& a2); // Soldier's event 6
 PyRef buildArgs(world::IPlayer* const& a0);                  // buildArgs<IPlayer*>       0x80A4860, 138 B
 PyRef buildArgs(world::IPlayer* const& a0, const int& a1);   // buildArgs<IPlayer*, int>  0x815BAB0, 178 B
 PyRef buildArgs(world::IPlayer* const& a0, const bool& a1);  // buildArgs<IPlayer*, bool> 0x8105350, 189 B - selectTeam's event 7

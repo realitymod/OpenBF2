@@ -636,6 +636,24 @@ PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, const bool
     return result;
 }
 
+// Builds (player, oldWeapon, newWeapon) for the PlayerChangeWeapon callback; a null weapon becomes None.
+// [INFERRED] Body follows the sibling object builders; the retail instantiation has not been read.
+// Without this overload the call bound to the (IPlayer*, IObject*, bool) form and passed 1 as newWeapon.
+PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, world::IObject* const& a2)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(3);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+    PyTuple_SetItem(t, 1, to_py(a1));           // steals
+    PyTuple_SetItem(t, 2, to_py(a2));           // steals
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
 // Builds a player-and-Boolean tuple for team-change callbacks. The Boolean is
 // represented as a Python integer.
 PyRef buildArgs(world::IPlayer* const& a0, const bool& a1)
