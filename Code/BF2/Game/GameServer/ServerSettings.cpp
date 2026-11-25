@@ -134,6 +134,7 @@ void ServerSettings::save(std::ostream& out)
     out << "sv.actionBufferMaxSize " << m_actionBufferMaxSize << std::endl;         // [CHOSEN, not recovered]
     out << "sv.maxPacketSize " << m_maxPacketSize << std::endl;                     // [CHOSEN, not recovered]
     out << "sv.connectionTimeout " << m_connectionTimeout << std::endl;             // [CHOSEN, not recovered]
+    out << "sv.maxSquadMembers " << m_maxSquadMembers << std::endl;                 // [CHOSEN, not recovered]
 }
 
 // Serializes settings and writes the script in one operation. Returns false for
@@ -221,6 +222,7 @@ ServerSettings::ServerSettings()
     m_actionBufferMaxSize          = 2;        // [CHOSEN, not recovered] Project Reality's values
     m_maxPacketSize                = 0x540;
     m_connectionTimeout            = 45000;
+    m_maxSquadMembers              = 8;        // [CHOSEN, not recovered] Project Reality's value
 
     setMaxPlayers(16);                         // the result string is discarded
 }
