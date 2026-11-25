@@ -3355,7 +3355,11 @@ float Soldier::getMouseSpeedMod()
     if (!getOccupingPlayer()->getCamera())                       // IPlayer +0x180
         abort();                                                 // dice's
 
-    const float playerFov = getOccupingPlayer()->getFov();       // IPlayer +0x90
+    // [CHOSEN, not recovered] Project Reality's client (0x5A61EC) and server (PE file 0x14E1BA)
+    // replace this IPlayer::getFov call with fld1, so zoom FOV no longer scales mouse speed and
+    // a soldier camera wider than 1 rad turns slower. The client predicts with it; a different
+    // server turn makes every correction jump.
+    const float playerFov = 1.0f;
     ICameraObject* camera = getOccupingPlayer()->getCamera();
     const float activeFov = camera->getActiveFOV();              // ICameraObject +0x58
 
