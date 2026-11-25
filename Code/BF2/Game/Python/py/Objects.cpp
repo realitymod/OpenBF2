@@ -443,7 +443,7 @@ bool isSupplyObject(world::IObject* obj)
 } // namespace
 
 // Adds common methods and capability-specific methods/flags to a Python object.
-// Armor uses the component field; PCO and control-point capabilities use interface
+// Damage methods are bound on every object; PCO and control-point capabilities use interface
 // queries. Always returns true, even if an individual method binding fails.
 bool addObjectMethods(PyObject* instance, world::IObject* obj)
 {
@@ -458,14 +458,13 @@ bool addObjectMethods(PyObject* instance, world::IObject* obj)
     addSingleMethod(instance, &meth_getRotation);
     addSingleMethod(instance, &meth_setRotation);
 
-    long hasArmor = 0;
-    if (obj->getArmorComponent())                  // IObject +0x3C, a field test
-    {
-        addSingleMethod(instance, &meth_getDamage);
-        addSingleMethod(instance, &meth_setDamage);
-        hasArmor = 1;
-    }
-    PyObject_SetAttrString(instance, "hasArmor", PyInt_FromLong(hasArmor));
+    // [CHOSEN, not recovered] Project Reality's server drops retail's armor test here: every object
+    // gets the damage methods and hasArmor is always 1. A vehicle wrapped while parked in the
+    // object cache has no armor component but keeps that wrapper once revived; object_getDamage
+    // reads the armor at call time and returns None without one.
+    addSingleMethod(instance, &meth_getDamage);
+    addSingleMethod(instance, &meth_setDamage);
+    PyObject_SetAttrString(instance, "hasArmor", PyInt_FromLong(1));
 
     long isPco = 0;
     if (o->queryInterface(world::IID_IPlayerControlObject))
