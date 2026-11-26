@@ -279,7 +279,7 @@ struct NameTagRendererLayoutCheck
     // [CHOSEN, not recovered] Past m_slots every offset moves by 36 * 0xE0 = 0x1F80 for 100 slots.
     // Retail (64 slots) has these at 0x3848..0x385C and a 0x3860-byte object; the values below are
     // the ones Ekiso's RendDX9 100-player patch writes.
-    static_assert(SlotCapacity == 100, "update the offsets below with the slot capacity");
+    static_assert(NameTagRenderer::SlotCapacity == 100, "update the offsets below with the slot capacity");
     static_assert(offsetof(NameTagRenderer, m_dirty) == 0x57C8, "+0x57C8 (retail +0x3848)");
     static_assert(offsetof(NameTagRenderer, m_byte384A) == 0x57CA, "+0x57CA (retail +0x384A)");
     static_assert(offsetof(NameTagRenderer, m_slotCount) == 0x57CC, "+0x57CC (retail +0x384C)");
