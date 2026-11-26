@@ -47,6 +47,12 @@ public:
     virtual ~StrategicObjectCompTemplate();
     virtual bool  makeScript(io::IStream*);                          // +0x70 last
 
+    // [CHOSEN, not recovered] Project Reality map-icon size, authored through
+    // ObjectTemplate.strategicObject.iconSize. Both sides of the square icon; defaults to the
+    // retail hard-coded 19.0. Non-virtual so the retail vtable is unchanged.
+    void  setIconSize(float value) { m_iconSize = value; }
+    float getIconSize() const      { return m_iconSize; }
+
 protected:
     friend class StrategicObjectComp; // getHudInfo/getHudIcons return addresses within this payload
     /*  8 */ int   m_refCount;
@@ -64,6 +70,10 @@ protected:
     /* 41 */ bool  _byte29;                       // [UNRESOLVED]
     /* 42 */ bool  _byte2A;
     /* 43 */ bool  _byte2B;
+
+    // [CHOSEN, not recovered] Appended past the retail layout (rhooks grew the PE allocation from
+    // 0x74 to 0x78 for this field).
+    /* 44 */ float m_iconSize;
 };
 
 } // namespace world

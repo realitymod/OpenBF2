@@ -13,6 +13,7 @@ extern "C" {
 #include "../../../External/GameSpy/qr2/qr2.h"                 // qr2_initA / think / shutdown / buffers
 #include "../../../External/GameSpy/gcdkey/gcdkeys.h"         // gcd_init_qr2 / gcd_shutdown
 #include "../../../External/GameSpy/common/gsAvailable.h"     // GSIStartAvailableCheckA / Think
+#include <cstring>
 }
 
 namespace dice {
@@ -182,6 +183,13 @@ GameSpyBackend::GameSpyBackend(MatchMakingServer::Server* mmServer)
     , m_allowNATNegotiation(serverSettings->m_allowNATNegotiation)
     , m_cdkAuth(mmServer->internetServer)
 {
+    // [CHOSEN, not recovered] Project Reality's default server build patches its GameSpy hosts to
+    // localhost: its master server proxy runs beside the server and answers the
+    // availability check and the qr2 heartbeat on 27900, and CD-key auth on 29910, which
+    // gcd_init_qr2 sends to the qr2 master's address.
+    std::strcpy(GSIACHostname, "127.0.0.1");
+    std::strcpy(qr2_hostname, "127.0.0.1");
+
     // Wait for the SDK's UDP availability result. Non-Available leaves qr2 down; the upstream
     // SDK also has fail-open availability outcomes on lookup/socket/timeout failures.
     GSIStartAvailableCheckA(gamespy::g_gameName);

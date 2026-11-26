@@ -68,7 +68,11 @@ SoldierBasedRecoilComp::SoldierBasedRecoilComp(
     , m_yawRecoil(0.0f)
     , m_soldierTemplate(objectTemplate)
 {
-    // m_recoilTicks and the three alignment bytes are deliberately untouched, as shipped.
+    // The three alignment bytes are deliberately untouched, as shipped. [CHOSEN, not recovered]
+    // Retail leaves m_recoilTicks untouched too, but getRecoil now reads every entry, so unfired
+    // entries start at tick 0, which is always too old to count.
+    for (int i = 0; i < 10; ++i)
+        m_recoilTicks[i] = 0;
 }
 
 SoldierBasedRecoilComp::~SoldierBasedRecoilComp()
@@ -142,55 +146,41 @@ float SoldierBasedRecoilComp::getYawRecoil()
     return getRecoil(m_yawRecoil);
 }
 
-unsigned int SoldierBasedRecoilComp::tickAtRetailIndex(int index) const
-{
-    // [SHIPPED DEFECT] getRecoil starts at -1 before the first shot and wraps a decrement to 10.
-    // The original raw array reads alias the adjacent refcount/current-index dwords.  Spell those
-    // aliases explicitly so the observable quirk survives without introducing C++ out-of-bounds UB.
-    if (index == -1)
-        return static_cast<unsigned int>(m_soldierRefCount);
-    if (index == 10)
-        return static_cast<unsigned int>(m_currentRecoilIndex);
-    return m_recoilTicks[index];
-}
-
-// , 318 B.  Repeated vector and TickCount calls are retained;
-// the newest non-future history entry drives a reverse-indexed recoil graph sample.
+// [CHOSEN, not recovered] Project Reality's cumulative recoil. Retail samples the graph for the
+// newest shot only and scales by the firearm's getDevMod (always 1.0). PR sums the graph over the
+// last 10 shots: pull-back (negative) frames from every shot, kick frames from the newest only. A
+// shot fired this tick does not count yet, so the first kick lands one tick later. The graph is
+// stored reversed, first frame last.
+// [RETIRE-WHEN: rhooks-recoil] Also computed by the PR client's rhooks (getRecoilHook.cpp), which
+// predicts with exactly this formula and without getDevMod. Keep it identical while old clients
+// connect.
 float SoldierBasedRecoilComp::getRecoil(float recoil)
 {
-    if (!getHasRandomRecoilForce())
+    if (recoil == 0.0f)
         return 0.0f;
 
-    unsigned int startTick = 0;
-    int index = m_currentRecoilIndex;
-    const int sentinel = (m_currentRecoilIndex + 1) % 10;
-    if (index != sentinel)
+    const int newest = m_currentRecoilIndex;
+    if (newest < 0)
+        return 0.0f;
+
+    const std::vector<float>& graph = getRecoilVector();
+    const unsigned int frames = static_cast<unsigned int>(graph.size());
+    const unsigned int now = static_cast<unsigned int>(WorldPref::getTickCount());
+    if (now - m_recoilTicks[newest] > frames)
+        return 0.0f;
+
+    float sum = 0.0f;
+    for (int i = 0; i < 10; ++i)
     {
-        while (tickAtRetailIndex(index) > static_cast<unsigned int>(WorldPref::getTickCount()))
-        {
-            --index;
-            if (index < 0)
-                index = 10; // Deliberate retail wrap, not 9; see tickAtRetailIndex().
-            if (index == sentinel)
-                break;
-        }
-        if (index != sentinel)
-            startTick = tickAtRetailIndex(index);
+        // Unsigned on purpose: a shot this tick or older than the graph gives an index >= frames.
+        const unsigned int frame = frames - (now - m_recoilTicks[i]);
+        if (frame >= frames)
+            continue;
+        const float value = graph[frame];
+        if (value < 0.0f || i == newest)
+            sum += value;
     }
-
-    if (static_cast<unsigned int>(WorldPref::getTickCount())
-        >= startTick + static_cast<unsigned int>(getRecoilVector().size()))
-        return 0.0f;
-
-    const int elapsed = WorldPref::getTickCount() - static_cast<int>(startTick);
-    if (elapsed >= static_cast<int>(getRecoilVector().size()) - 1)
-        return 0.0f;
-
-    const std::size_t vectorIndex = getRecoilVector().size()
-                                  - static_cast<std::size_t>(elapsed) - 1u;
-    const float graphedRecoil = recoil * getRecoilVector()[vectorIndex];
-    // The scale is the firearm's getDevMod (always 1.0), not its zoom mouse-speed modifier.
-    return static_cast<GenericFireArm*>(m_initObject)->getDevMod() * graphedRecoil;
+    return recoil * sum;
 }
 
 // .  The ancestor walk starts at the weapon's parent (not the weapon),
@@ -271,7 +261,7 @@ SoldierBasedRecoilCompTemplate::SoldierBasedRecoilCompTemplate()
     , m_hasRecoilForce(false)
     , m_goBackOnRecoil(true)
     , m_zoomModifier(1.0f)
-    , m_recoilGraphFrameCount(8)
+    , m_recoilGraphFrameCount(s_defaultRecoilGraphFrameCount)
     , m_recoilGraphExponent(2.0f)
     , m_recoilGraphTotalMovement(2.0f)
     , m_recoilGraph()
@@ -280,6 +270,8 @@ SoldierBasedRecoilCompTemplate::SoldierBasedRecoilCompTemplate()
     m_recoilForceLeftRight.value = 0.0f;
     // +0x36/+0x37 remain untouched alignment padding in the shipped constructor.
 }
+
+int SoldierBasedRecoilCompTemplate::s_defaultRecoilGraphFrameCount = 5;   // [CHOSEN, not recovered]
 
 SoldierBasedRecoilCompTemplate::~SoldierBasedRecoilCompTemplate()
 {
@@ -427,7 +419,7 @@ bool SoldierBasedRecoilCompTemplate::makeScript(io::IStream* stream)
         }
         if (m_zoomModifier != 1.0f)
             script << "ObjectTemplate.recoil.zoomModifier " << m_zoomModifier << std::endl;
-        if (m_recoilGraphFrameCount != 8)
+        if (m_recoilGraphFrameCount != s_defaultRecoilGraphFrameCount)
         {
             script << "ObjectTemplate.recoil.recoilGraphFrameCount "
                    << m_recoilGraphFrameCount << std::endl;

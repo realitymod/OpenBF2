@@ -17,23 +17,28 @@ const int playerInputIsMappedArray[] = {
     64      // terminator
 };
 
+// [CHOSEN, not recovered] Project Reality's client and server quantize axes to 1/2048 instead of
+// retail's hundredths (PE client 0x5BC5F0, server 0x55BDF0, and the set/get axis loops). A PR
+// client's actions decode correctly only with the same scale.
+const float kAxisScale = 2048.0f;
+
 // A button is pressed only when input strictly exceeds 0.5.
 const float kPressedThreshold = 0.5f;   // ds:0x888B170, compared with fucomip - strictly greater
 
 } // anonymous namespace
 
-// Quantizes an axis to hundredths by truncating through a signed short. Clamps the
+// Quantizes an axis to 1/kAxisScale by truncating through a signed short. Clamps the
 // scaled value symmetrically to ±32767, excluding the most-negative short value.
 float convertAxisToInternalResolution(float value)
 {
-    float scaled = value * 100.0f;                  // ds:0x88844B8 = 100.0f
+    float scaled = value * kAxisScale;
 
     if (scaled > 32767.0f)                          // ds:0x888B3A0
         scaled = 32767.0f;
     else if (!(scaled >= -32767.0f))                // ds:0x888B3A4, via fcmovbe
         scaled = -32767.0f;
 
-    return (float)(short)(int)scaled / 100.0f;
+    return (float)(short)(int)scaled / kAxisScale;
 }
 
 // Stores the mapped input as a quantized short; unmapped input stores zero. Requires
@@ -54,7 +59,7 @@ void PlayerAction::setAxis(const io::PlayerInput& input, int axis)
             value = input.inputs[axis];
     }
 
-    m_axis[axis] = (short)(int)(convertAxisToInternalResolution(value) * 100.0f);
+    m_axis[axis] = (short)(int)(convertAxisToInternalResolution(value) * kAxisScale);
 }
 
 // Copies action fields in their defined order while leaving tail padding untouched.
@@ -167,12 +172,12 @@ void setInput(io::PlayerInput& input, int idx, bool pressed)
 
 } // anonymous namespace
 
-// Decodes one stored axis in hundredths and marks the destination input mapped before
+// Decodes one stored axis in 1/kAxisScale units and marks the destination input mapped before
 // writing it. Requires axis 0–5; the source array access is unchecked.
 void PlayerAction::getAxis(io::PlayerInput& out, int axis) const
 {
     setInputIsMapped(out, axis, true);
-    setInput(out, axis, (float)m_axis[axis] / 100.0f);   // ds:0x88844B8 = 100.0f
+    setInput(out, axis, (float)m_axis[axis] / kAxisScale);
 }
 
 // Expands an action into player input, zeroing input values before decoding axes and buttons.

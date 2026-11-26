@@ -196,6 +196,7 @@ RagDoll::RagDoll(RagDollTemplate& templ)
     m_isClient = false;
     m_firstNetState = true;
     m_settled = false;
+    clearDrag();
     wakeUp();
 }
 
@@ -1269,6 +1270,7 @@ const Vec3& RagDoll::update(float dt)
                         m_gravityTime = m_gravityOverTime;
                 }
                 accumulateForces();
+                applyDrag();                                   // [CHOSEN, not recovered]
                 verlet(step);
                 satisfyConstraints();
             }
@@ -1338,6 +1340,42 @@ const Vec3& RagDoll::update(float dt)
     return m_position;
 }
 
+
+void RagDoll::setDrag(int particle, const Vec3& target, float acceleration, float exponent)
+{
+    m_dragParticle = particle;
+    m_dragTarget = target;
+    m_dragAcceleration = acceleration;
+    m_dragExponent = exponent;
+    wakeUp();
+}
+
+void RagDoll::clearDrag()
+{
+    m_dragParticle = -1;
+    setVec(m_dragTarget, 0.0f, 0.0f, 0.0f);
+    m_dragAcceleration = 0.0f;
+    m_dragExponent = 0.0f;
+}
+
+void RagDoll::applyDrag()
+{
+    if (m_dragParticle < 0 || static_cast<size_t>(m_dragParticle) >= m_particles.size())
+        return;
+
+    Particle& p = m_particles[m_dragParticle];
+    const float dx = m_dragTarget.x - p.m_position.x;
+    const float dy = m_dragTarget.y - p.m_position.y;
+    const float dz = m_dragTarget.z - p.m_position.z;
+    const float distance = sqrtf(dx * dx + dy * dy + dz * dz);
+    if (distance < FLT_EPSILON)
+        return;
+
+    const float scale = m_dragAcceleration * powf(distance, m_dragExponent) / distance;
+    p.m_acceleration.x += dx * scale;
+    p.m_acceleration.y += dy * scale;
+    p.m_acceleration.z += dz * scale;
+}
 
 // Leaving client mode after a network update promotes received positions, clears forces, and solves constraints once.
 

@@ -108,13 +108,18 @@ float* const g_inputReleaseRateVar    = Vars::getFloat("phy-soldier-deceleration
 float* const g_skydiveAtSpeedVar      = Vars::getFloat("phy-soldier-skydiveat-speed", -10.0f);
 float* const g_skydiveSpeedVar        = Vars::getFloat("phy-soldier-skydive-speed", 15.0f);
 float* const g_soldierDrownDamageVar  = Vars::getFloat("soldier-drown-damage", 8.0f);
-float* const g_sprintSpeedVar         = Vars::getFloat("phy-soldier-sprint-speed", 7.0f);
-float* const g_runSpeedVar            = Vars::getFloat("phy-soldier-run-speed", 3.9f);
-float* const g_walkSpeedVar           = Vars::getFloat("phy-soldier-walk-speed", 1.5f);
-float* const g_crouchSpeedVar         = Vars::getFloat("phy-soldier-crouch-speed", 2.0f);
-float* const g_crawlSpeedVar          = Vars::getFloat("phy-soldier-crawl-speed", 0.8f);
-float* const g_swimSpeedVar           = Vars::getFloat("phy-soldier-swim-speed", 2.0999999f);
-float* const g_swimCrawlSpeedVar      = Vars::getFloat("phy-soldier-swimcrawl-speed", 3.6450002f);  // raw 0x406947AE
+// [CHOSEN, not recovered] Project Reality's soldier speeds as the defaults; the PR server and client
+// hard-code these, and the PR client predicts with them. Retail: sprint 7.0, run 3.9, walk 1.5,
+// crouch 2.0, crawl 0.8, swim 2.1, swimcrawl 3.645 (raw 0x406947AE). Sprint is the shipped PR
+// servers' 5.2; PR's SoldierMovement bindiff gives 1.45 (0x3FB9999A) for its client instead, which
+// is slower than running and has not been checked against the shipped PR client.
+float* const g_sprintSpeedVar         = Vars::getFloat("phy-soldier-sprint-speed", 5.2f);
+float* const g_runSpeedVar            = Vars::getFloat("phy-soldier-run-speed", 2.9f);
+float* const g_walkSpeedVar           = Vars::getFloat("phy-soldier-walk-speed", 1.6f);
+float* const g_crouchSpeedVar         = Vars::getFloat("phy-soldier-crouch-speed", 1.2f);
+float* const g_crawlSpeedVar          = Vars::getFloat("phy-soldier-crawl-speed", 0.6f);
+float* const g_swimSpeedVar           = Vars::getFloat("phy-soldier-swim-speed", 1.5f);
+float* const g_swimCrawlSpeedVar      = Vars::getFloat("phy-soldier-swimcrawl-speed", 2.45f);
 float* const g_jumpSpeedFactorVar     = Vars::getFloat("phy-soldier-inair-speed", 2.0f);
 float* const g_maxTurnRatePerTickVar  = Vars::getFloat("soldier-lookSideRestore", 4.0f);
 float* const g_proneWaterClearanceVar = Vars::getFloat("soldier-prone-inwater-limit", 1.1f);
@@ -3350,7 +3355,11 @@ float Soldier::getMouseSpeedMod()
     if (!getOccupingPlayer()->getCamera())                       // IPlayer +0x180
         abort();                                                 // dice's
 
-    const float playerFov = getOccupingPlayer()->getFov();       // IPlayer +0x90
+    // [CHOSEN, not recovered] Project Reality's client (0x5A61EC) and server (PE file 0x14E1BA)
+    // replace this IPlayer::getFov call with fld1, so zoom FOV no longer scales mouse speed and
+    // a soldier camera wider than 1 rad turns slower. The client predicts with it; a different
+    // server turn makes every correction jump.
+    const float playerFov = 1.0f;
     ICameraObject* camera = getOccupingPlayer()->getCamera();
     const float activeFov = camera->getActiveFOV();              // ICameraObject +0x58
 
@@ -3464,8 +3473,11 @@ void Soldier::updateSoldierPose(bool prone, bool crouch)
             m_poseTimers[3] = g_poseUpTimerB;
             m_float3B4      = g_poseUpTimerC;
         }
-        if (pose == 0 && m_requestedPose == 2)               // going down: one timer
-            m_poseTimers[2] = g_poseDownTimer;
+        // [CHOSEN, not recovered] Project Reality: going prone from any stance delays firing by
+        // stand-delay-from-prone; retail delayed standing up again, and only when going down from
+        // standing (m_poseTimers[2]). The PR client predicts firing with this rule.
+        if (m_requestedPose == 2)
+            m_float3B4 = g_poseDownTimer;
 
         m_poseInputLatch |= 2;                               // latch the press
         return;
@@ -3860,6 +3872,10 @@ void Soldier::handlePlayerInput(IPlayer* player, const io::PlayerInput& input,
 
     // Moving drives the body immediately and transfers an existing stationary side-look into the
     // restoration accumulator. Stationary input moves only the camera until the side limit is met.
+    // [CHOSEN, not recovered] Ekiso's frame-skip fix for Project Reality: at the side limit retail
+    // turns the body by this tick's input and also keeps it in the side-look that the pending turn
+    // pays out again later, so the body turns twice. Now an input beyond soldier-lookSideRestore
+    // turns the body at once and leaves the side-look; a smaller one waits for the pending turn.
     if (std::fabs(forwardAxis) > 0.01f)
     {
         if (m_lookLeftRightAngle != 0.0f)
@@ -3871,16 +3887,32 @@ void Soldier::handlePlayerInput(IPlayer* player, const io::PlayerInput& input,
         if (m_lookLeftRightAngle >= lookLimit)
         {
             if (vehicle)
+            {
                 m_lookLeftRightAngle = lookLimit;
+            }
             else
+            {
                 m_float214 = m_lookLeftRightAngle;
+                if (yawDelta > g_maxTurnRatePerTick)
+                    m_lookLeftRightAngle -= yawDelta;
+                else
+                    appliedYaw = 0.0f;
+            }
         }
         else if (m_lookLeftRightAngle <= -lookLimit)
         {
             if (vehicle)
+            {
                 m_lookLeftRightAngle = -lookLimit;
+            }
             else
+            {
                 m_float214 = m_lookLeftRightAngle;
+                if (-yawDelta > g_maxTurnRatePerTick)
+                    m_lookLeftRightAngle -= yawDelta;
+                else
+                    appliedYaw = 0.0f;
+            }
         }
         else
         {

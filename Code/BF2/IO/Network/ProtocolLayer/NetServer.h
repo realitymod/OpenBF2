@@ -280,8 +280,11 @@ public:
     /* +0x4DC */ unsigned int m_reconnectTimeout;         // = 0
     /* +0x4E0 */ bool         m_bDebugNetwork;            // = 0  - init() reads "GSDebugNetwork"
     /* +0x4E4 */ Mutex        m_mutex4E4;                 // by value  [UNRESOLVED role]
-    // Pool of 64 connection pointers allocated by init.
-    /* +0x4E8 */ SWConnection** m_swConnections;           // = 0; init allocates 64 slots
+    // [CHOSEN, not recovered] Retail pools 64 connections; PR's 100-player server scans 100
+    // (prbf2_l64ded NetServer::allocConnection), so sv.maxPlayers 100 has a connection per player.
+    static const int ConnectionPoolSize = 100;
+    // Pool of ConnectionPoolSize connection pointers allocated by init.
+    /* +0x4E8 */ SWConnection** m_swConnections;           // = 0; init allocates the pool
     /* +0x4EC */ bool         m_stopRequested;            // resolved - the receive thread's stop
                                                           //   flag, tested under m_stopMutex
     /* +0x4F0 */ PacketFilter m_packetFilter;             // by value, 0x10 - see the size note

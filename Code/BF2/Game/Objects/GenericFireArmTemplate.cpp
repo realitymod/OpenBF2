@@ -43,6 +43,7 @@ GenericFireArmTemplate::GenericFireArmTemplate()
     m_cannotFireGuiIndex = 0;                        // +508
     m_cannotFireTimer = 1.0f;                        // +512
     m_crosshairFireTime = 3.0f;                      // +516
+    m_proneOnlyReload = false;                       // +520 [CHOSEN, not recovered]
 }
 
 // Console setters that also update derived state.

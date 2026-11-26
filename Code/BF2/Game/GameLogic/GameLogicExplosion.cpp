@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
+#include <string>
 
 #include "GameLogicDamage.h"
 #include "../IGameLogic.h"
@@ -26,6 +28,7 @@
 #include "../Utility/Vars.h"
 #include "../../Core/EventManager.h"
 #include "../../Core/Ids.h"
+#include "../../Core/StringUtil.h"             // [CHOSEN, not recovered] getLowerCase
 #include "../../Math/LocalBoundingBox.h"
 #include "../../Physics/ICollisionMesh.h"
 #include "../../Physics/IPhysicsNode.h"
@@ -74,6 +77,15 @@ float* const g_explosionHotspotRayMax = Vars::getFloat("explosion-hotspot-ray-ma
 float* const g_explosionSoldierForceYMod =
     Vars::getFloat("explosion-soldier-expforce-ymod", 5.0f);
 int* const g_explosionLatencyComp = Vars::getInt("explosion-latencyComp", 1);
+
+// [CHOSEN, not recovered] See disableLatencyCompensationFor. Lower-cased template names.
+std::set<std::string> g_latencyCompDisabledTemplates;
+
+bool latencyCompensationDisabledFor(IObject* projectile)
+{
+    return projectile && !g_latencyCompDisabledTemplates.empty()
+        && g_latencyCompDisabledTemplates.count(getLowerCase(projectile->getTemplate()->getName())) != 0;
+}
 
 inline MaterialManager* materials()
 {
@@ -388,6 +400,11 @@ float GameLogicExplosion::getExplosionRadiusMod(float radius, float distance)
     if (result > 1.0f)
         result = 1.0f;
     return result;
+}
+
+void GameLogicExplosion::disableLatencyCompensationFor(const std::string& templateName)
+{
+    g_latencyCompDisabledTemplates.insert(getLowerCase(templateName));
 }
 
 // Calculates explosion damage and queues the deferred hit, with optional AI
@@ -766,6 +783,11 @@ bool GameLogicExplosion::serverHandleExplosion(
     IObject* sourceProjectile, IObject* affectedObject, float yMod, bool canTK,
     bool includeSource)
 {
+    // [CHOSEN, not recovered] See disableLatencyCompensationFor.
+    const bool latencyCompDisabled = latencyCompensationDisabledFor(sourceProjectile);
+    if (latencyCompDisabled)
+        objectManager->postMessage(sourceProjectile, static_cast<TemplateMessage>(29), 2.0f / 30.0f);
+
     if (material != -1)
     {
         handleExplosion(position, radius, material, damage, player, ignoredArmor, team,
@@ -777,7 +799,7 @@ bool GameLogicExplosion::serverHandleExplosion(
     std::vector<IObject*> soldiers;
     ObjectFlagPredicator rootsOnly(0x1000000u);
     GenericProjectile* queryProjectile = 0;
-    if (*g_explosionLatencyComp == 1 && LatencyCompensation::m_isEnabled)
+    if (*g_explosionLatencyComp == 1 && LatencyCompensation::m_isEnabled && !latencyCompDisabled)
         queryProjectile = projectileFromObject(sourceProjectile);
 
     if (queryProjectile
@@ -807,7 +829,7 @@ bool GameLogicExplosion::serverHandleExplosion(
 
         FlagIgnoreWaterPredicator ignoreWater(0x100u);
         Vec3 objectPosition = object->getAbsolutePosition();
-        if (*g_explosionLatencyComp == 1 && LatencyCompensation::m_isEnabled)
+        if (*g_explosionLatencyComp == 1 && LatencyCompensation::m_isEnabled && !latencyCompDisabled)
         {
             IPhysicsNode* const node = physicsNode(object);
             if (node && node->hasLatencyCompensation())

@@ -79,6 +79,11 @@ bool ZoomComp::canZoom()
     if (!m_template->getOnlyZoomWhenProne())
         return true;
 
+    // [CHOSEN, not recovered] Project Reality always lets a zoomed weapon zoom out; retail refuses
+    // that too when the player is not prone.
+    if (getCameraNr() != 0)
+        return true;
+
     IPlayer* const player = firearm()->getPlayer();
     if (!player)
         return false;

@@ -362,6 +362,8 @@ STRATEGIC_PROPERTY(strategicObject.intactIcon, std::string, setIntactIcon, getIn
 STRATEGIC_PROPERTY(strategicObject.part, int, setPart, getPart)
 STRATEGIC_PROPERTY(strategicObject.3dMapIcon, int, set3dMapIcon, get3dMapIcon)
 STRATEGIC_PROPERTY(strategicObject.isOnePiece, bool, setIsOnePiece, getIsOnePiece)
+// [CHOSEN, not recovered] Project Reality map-icon size. Not a retail property.
+STRATEGIC_PROPERTY(strategicObject.iconSize, float, setIconSize, getIconSize)
 #undef STRATEGIC_PROPERTY
 }
 

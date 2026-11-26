@@ -588,10 +588,12 @@ endfunction()
 # vendored PC/pyconfig.h; Linux uses the configure-generated pyconfig.h vendored under
 # External/python-embedded/linux/ (a chosen path - see that directory's README).
 if(BF2_BUILD_LINUX)
-    set(BF2_PYTHON_INCLUDE_DIRS
-        "${BF2_EXTERNAL_ROOT}/python-embedded/linux"
-        "${BF2_EXTERNAL_ROOT}/python-embedded/py-src-2.3.4/Include"
-    )
+    # [CHOSEN, not recovered] The Linux server embeds the system's stock Python 2.7 (libpython2.7,
+    # Ubuntu 22.04's libpython2.7-dev) instead of retail's 2.3.4, so Project Reality's 2.7 scripts
+    # run unchanged. Stock 2.7 has a 64-bit Py_ssize_t and renames Py_InitModule4 to
+    # Py_InitModule4_64, so PR's prebuilt libdice_py.so and its extension modules do not load here.
+    find_package(Python2 2.7 REQUIRED COMPONENTS Development)
+    set(BF2_PYTHON_INCLUDE_DIRS ${Python2_INCLUDE_DIRS})
 else()
     set(BF2_PYTHON_INCLUDE_DIRS
         "${BF2_EXTERNAL_ROOT}/python-embedded/py-src-2.3.4/Include"
@@ -730,6 +732,18 @@ target_include_directories(bf2_zlib_objects PRIVATE
 source_group(TREE "${BF2_EXTERNAL_ROOT}/zlib-1.2.3"
     PREFIX "External/zlib-1.2.3"
     FILES ${bf2_zlib_sources}
+)
+
+# [CHOSEN, not recovered] Project Reality's _realitycore module, registered as a built-in by
+# PythonHost::initialize. Every image that runs game scripts links it. See External/realitycore.
+set(bf2_realitycore_sources "${BF2_EXTERNAL_ROOT}/realitycore/_realitycore.c")
+add_library(bf2_realitycore_objects OBJECT ${bf2_realitycore_sources})
+bf2_set_image(bf2_realitycore_objects 1)
+bf2_configure_c_target(bf2_realitycore_objects)
+target_include_directories(bf2_realitycore_objects PRIVATE ${BF2_PYTHON_INCLUDE_DIRS})
+source_group(TREE "${BF2_EXTERNAL_ROOT}/realitycore"
+    PREFIX "External/realitycore"
+    FILES ${bf2_realitycore_sources}
 )
 
 # =================================================================================================
@@ -875,6 +889,7 @@ add_library(bf2_recovered STATIC
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
 )
 set_target_properties(bf2_recovered PROPERTIES
     LINKER_LANGUAGE CXX
@@ -951,15 +966,9 @@ endif()
 set(BF2_DEDICATED_OUTPUT_DIR "${BF2_DEDICATED_DEFAULT_OUTPUT_DIR}" CACHE PATH
     "Where ${BF2_DEDICATED_OUTPUT_NAME}.exe is written (never the retail game directory)")
 if(BF2_BUILD_LINUX)
-    # libdice_py.so - the embedded CPython 2.3.4 as a shared library, built beside `bf2`.
-    set(BF2_DICE_PY_OUTPUT_DIR "${BF2_DEDICATED_OUTPUT_DIR}")
-    if(EXISTS "${BF2_EXTERNAL_ROOT}/python-embedded/linux/CMakeLists.txt")
-        add_subdirectory("${BF2_EXTERNAL_ROOT}/python-embedded/linux" "${CMAKE_BINARY_DIR}/dice_py")
-    else()
-        message(WARNING
-            "External/python-embedded/linux/CMakeLists.txt is missing: the dice_py target is not "
-            "defined and `bf2` cannot link. See docs/building.md.")
-    endif()
+    # [CHOSEN, not recovered] The system libpython2.7 stands in for the dice_py target.
+    add_library(dice_py INTERFACE)
+    target_link_libraries(dice_py INTERFACE Python2::Python)
 else()
     set(BF2_DICE_PY_LIB "${BF2_DICE_PY_DEFAULT_DIR}/dice_py.lib" CACHE FILEPATH
         "Architecture-matched dice_py import library")
@@ -972,6 +981,7 @@ add_executable("${BF2_DEDICATED_TARGET}"
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
 )
 # ★ THE ENTRY POINT IS Game/Main/BF2.cpp's PRODUCTION `main` (2026-08-24), inside bf2_engine_objects -
 # NOT Code/Build/bootmain.cpp. bootmain is the diagnostic HARNESS (bounded frames, probes, fault
@@ -1016,8 +1026,7 @@ endif()
 # NOTE: the guard is evaluated at CONFIGURE time, exactly like the .lib check below it. If the DLL
 # is built later by Code/Build/python/build_python.cmd, re-run CMake once so this rule appears.
 if(BF2_BUILD_LINUX)
-    # Nothing to stage: the dice_py target writes libdice_py.so into BF2_DEDICATED_OUTPUT_DIR, and
-    # the executable carries an $ORIGIN rpath (below) so the pair can be copied anywhere together.
+    # The system libpython2.7 is resolved from the default library path; nothing to stage.
 elseif(EXISTS "${BF2_DICE_PY_DLL}")
     add_custom_command(TARGET "${BF2_DEDICATED_TARGET}" POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -1391,6 +1400,7 @@ add_executable(bf2_client EXCLUDE_FROM_ALL
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
     $<TARGET_OBJECTS:bf2_gamespy_sb_objects>
     $<TARGET_OBJECTS:bf2_gamespy_gp_objects>
     $<TARGET_OBJECTS:bf2_gamespy_cdkeyc_objects>
@@ -1644,6 +1654,7 @@ add_executable(bf2_client_linkcheck EXCLUDE_FROM_ALL
     $<TARGET_OBJECTS:bf2_zlib_objects>
     $<TARGET_OBJECTS:bf2_tinyxml_objects>
     $<TARGET_OBJECTS:bf2_gamespy_objects>
+    $<TARGET_OBJECTS:bf2_realitycore_objects>
     $<TARGET_OBJECTS:bf2_gamespy_sb_objects>
     $<TARGET_OBJECTS:bf2_gamespy_gp_objects>
     $<TARGET_OBJECTS:bf2_gamespy_cdkeyc_objects>

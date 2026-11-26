@@ -6,6 +6,7 @@
 #ifndef GAME_GAMELOGIC_GAMELOGICEXPLOSION_H     // [INFERRED] guard style
 #define GAME_GAMELOGIC_GAMELOGICEXPLOSION_H
 
+#include <string>
 #include <vector>
 
 #include "../../Core/WeakPtr.h"
@@ -43,6 +44,11 @@ public:
                                              float, IObject*, float, float, bool);
     static float checkExplosionOnSoldier(const Vec3&, IObject*, float, IObject*);
     static float getExplosionRadiusMod(float radius, float distance);
+
+    // [CHOSEN, not recovered] Project Reality's anti-air override, not in retail: explosions of
+    // projectiles with this template are not latency-compensated, and the projectile is removed two
+    // ticks later. The name is matched case-insensitively.
+    static void disableLatencyCompensationFor(const std::string& templateName);
 
     // The queue, and the buffer it is currently filling. Every name is the ELF's own symbol.
     static std::vector<WeakPtr<IObject> > m_explosionObject[2];

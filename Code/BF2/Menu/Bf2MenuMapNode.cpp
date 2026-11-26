@@ -4351,7 +4351,10 @@ void Bf2MenuMapNode::collectIconFamily77E500()
         MapIconRecord icon;
         icon.position = hfe::Vec2{0.0f, 0.0f};
         icon.color = Color{1.0f, 1.0f, 1.0f, 1.0f};
-        icon.size = hfe::Vec2{19.0f, 19.0f};
+        // [CHOSEN, not recovered] Retail hard-codes 19.0 here; the template now supplies it.
+        const float iconSize = static_cast<hfe::world::StrategicObjectComp*>(
+            strategicComponent)->getIconSize();
+        icon.size = hfe::Vec2{iconSize, iconSize};
         icon.rotation = 0.0f;
         icon.texture = texture;
         icon.clampToVisibleMap = false;

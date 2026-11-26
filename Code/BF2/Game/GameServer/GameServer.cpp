@@ -36,6 +36,8 @@
 #include "../GameEvents/VoipSessionEvent.h"    // createPlayer's unicast
 #include "../GameEvents/RadioMessageEvent.h"   // radio trio -> RadioMessageReceivedEvent seam
 #include "../GameEvents/EnterVehicleEvent.h"   // enterVehicle replication
+#include "../Objects/GenericFireArmTemplate.h"     // [CHOSEN, not recovered] proneOnlyReload
+#include "../Objects/Weapons/GenericFireArm.h"
 #include "../Objects/Game/Soldier.h"           // setLookUpDownAngle - the wired hook
 #include "../Objects/Game/KitTemplate.h"       // the two CreateKitEvent operands
 #include "../GameEvents/ExitVehicleEvent.h"    // exitVehicle replication
@@ -476,6 +478,7 @@ bool GameServer::startServer(const std::string& a1, int port, int /* dead - neve
     }
 
     m_netServer->setPassword(serverSettings->getPassword());        // +0x40
+    m_netServer->setConnectionTimeOut(static_cast<unsigned int>(serverSettings->m_connectionTimeout));   // [CHOSEN, not recovered]
 #if !DEDICATED
     // [PLATFORM] BF2.exe 0x4CACC2..0x4CACF9, folded away in the dedicated ELF (): a
     // listen server keeps one connection for its own player - getMaxPlayers minus one, and 1 when
@@ -678,10 +681,12 @@ bool GameServer::loadPath(const std::string& levelName)
     m_mapInfo.setLevelPath(settings->stringGet("GSLevelDirectory", ""));
     m_mapInfo.setMapName(entry->name);
 
-    // ...and write the resolved values back into settings - GSMaxNrOfPlayers and GSGameMode now
-    // reflect the level actually being loaded.
-    int resolvedMax = m_mapInfo.getMaxNumberOfPlayers();
-    settings->intSet("GSMaxNrOfPlayers", resolvedMax);      // +0x14, by pointer
+    // ...and write the resolved game mode back into settings, so GSGameMode reflects the level
+    // actually being loaded. [CHOSEN, not recovered] Retail also writes the map's player count
+    // into GSMaxNrOfPlayers, which the player cap (createPlayerWithValidName) and the reserved-slot
+    // check read, so both used the map's size instead of sv.maxPlayers until Project Reality's
+    // scripts re-set sv.maxPlayers. GSMaxNrOfPlayers now keeps the server's value; the map's size
+    // stays in m_mapInfo.
     settings->stringSet("GSGameMode", m_mapInfo.getGameMode());
 
     // The path handed to GameLogic::load: GSLevelDirectory + levelName + "/". this is why load()
@@ -2994,6 +2999,8 @@ void GameServer::setConnectionType(int connectionId, ConnectionType type)
     {
         const int* const row = g_connectionTypes[static_cast<int>(type)];
         cc->m_packetSizeOverride = row[3];           // +0x18
+        if (static_cast<int>(type) == 5)             // [CHOSEN, not recovered] sv.maxPacketSize
+            cc->m_packetSizeOverride = serverSettings->m_maxPacketSize;
         cc->m_dword14            = row[1];           // +0x14
     }
 
@@ -3094,8 +3101,11 @@ void GameServer::processGameStateAndSendPackets(float dt)
             if (recording || (ghostBudget > 0 && conn->m_timer20 <= 0.0f))
             {
                 --ghostBudget;
-                conn->updateGhostManager(viewDistance);              // the scope pass, 10 Hz max
-                conn->m_timer20 = 0.1f;                              // 10 Hz
+                conn->updateGhostManager(viewDistance);              // the scope pass
+                // [CHOSEN, not recovered] Retail reloads 0.1 s (10 Hz max); Project Reality
+                // lengthens it through sv.ghostScopeRefreshTicks.
+                conn->m_timer20 =
+                    static_cast<float>(serverSettings->m_ghostScopeRefreshTicks - 1) * 0.1f;
             }
             else
             {
@@ -3168,21 +3178,22 @@ bool GameServer::isRecordingDemo() const
     return false;
 }
 
-// : for every connection with a player, trim its ActionBuffer down to 4 entries
-// (popping the front while size() > 4) and resetTickCounter(); then clear the queued local inputs.
-// A connection without a Player advances to the next map node at 0x80B4BE0; it does not bypass the
-// remaining connections or the final m_playerInputs clear.
+// : for every connection with a player, trim its ActionBuffer down to sv.actionBufferMaxSize
+// entries (popping the front while larger) and resetTickCounter(); then clear the queued local
+// inputs. A connection without a Player advances to the next map node at 0x80B4BE0; it does not
+// bypass the remaining connections or the final m_playerInputs clear.
 void GameServer::clearPlayerActions()
 {
+    const int maxSize = serverSettings->m_actionBufferMaxSize;     // [CHOSEN, not recovered] retail 4
     for (std::map<unsigned char, IClientConnection*>::iterator it = m_connections.begin();
          it != m_connections.end(); ++it) {
         world::IPlayer* const player = it->second->getPlayer();      // ServerConnection::getPlayer, vtable +0x18
         if (!player)
             continue;
 
-        if (player->getActionBuffer()->size() > 4)                   // something older than the last 4?
+        if (player->getActionBuffer()->size() > maxSize)             // something older than the newest?
         {
-            while (player->getActionBuffer()->size() > 4)            // drop the oldest until 4 remain
+            while (player->getActionBuffer()->size() > maxSize)      // drop the oldest
                 player->getActionBuffer()->m_entries.pop_front();
             player->resetTickCounter();                              // IPlayer +0xDC
         }
@@ -3342,6 +3353,49 @@ void GameServer::sendMissileMessageToOccupyingPlayers(
     }
 }
 
+namespace {
+// [CHOSEN, not recovered] Project Reality's proneOnlyReload rule, applied to a human player's input
+// before it is simulated: a reload of such a weapon is dropped unless the soldier is prone, and
+// while it reloads the soldier cannot leave prone (prone, crouch and jump are dropped).
+// [RETIRE-WHEN: rhooks-prone-reload] The PR client's rhooks (proneOnlyReload.cpp) predicts this
+// with inputs of exactly 1.0 and a non-zero reload state, so the server checks the same way.
+// Use pressed-input tests once old clients no longer connect.
+void applyProneOnlyReload(world::IPlayer* player, io::PlayerInput& input)
+{
+    float* const in = input.inputs;
+    const bool reload = in[io::PIReload] == 1.0f;
+    const bool poseChange = in[io::PILie] == 1.0f || in[io::PICrouch] == 1.0f
+                         || in[io::PIAction] == 1.0f;
+    if (!reload && !poseChange)
+        return;
+
+    world::IObject* const vehicle = player->getVehicle();
+    if (!vehicle || vehicle->getTemplate()->getClassID() != world::CID_SoldierTemplate)
+        return;
+    world::Soldier* const soldier = static_cast<world::Soldier*>(vehicle);
+
+    world::IObject* const weapon = soldier->getActiveWeapon(0);
+    if (!weapon || weapon->getTemplate()->getClassID() != world::CID_GenericFireArmTemplate)
+        return;
+    if (!static_cast<const world::GenericFireArmTemplate*>(weapon->getTemplate())->m_proneOnlyReload)
+        return;
+
+    const bool prone = soldier->getPose() == world::SoldierPose_Prone;
+    if (reload)
+    {
+        if (!prone)
+            in[io::PIReload] = 0.0f;
+        return;
+    }
+    if (prone && static_cast<world::GenericFireArm*>(weapon)->getReloadState() != 0)
+    {
+        in[io::PILie] = 0.0f;
+        in[io::PICrouch] = 0.0f;
+        in[io::PIAction] = 0.0f;
+    }
+}
+} // namespace
+
 // Consumes one player action or replays the last input for up to 30 empty-queue ticks
 // before using neutral input. Queued actions use their own stamp; replay uses the
 // buffer index plus one. Repeated getVehicle calls must remain separate because
@@ -3397,6 +3451,7 @@ bool GameServer::simulatePlayerUpdate(world::IPlayer* player, float dt)
             buffer->m_entries.erase(buffer->m_entries.begin());
             buffer->m_replayCount = 0;                  // a real action resets the run
         }
+        applyProneOnlyReload(player, input);            // [CHOSEN, not recovered]
         chosen = &input;
     }
 
@@ -3992,9 +4047,9 @@ void GameServer::adminToPlayerEvent(IEventWrapper& wrapper)
 }
 
 namespace {
-// The "is this player out of the fight" test the two player-message dispatchers and filterMessage
-// share: dead, or man-down (with the two LocalRevive channels exempting a man-down sender so a
-// downed player can still call for a medic).
+// The "is this player out of the fight" test serverPlayerMessageEvent and filterMessage share:
+// dead, or man-down (with the two LocalRevive channels exempting a man-down sender so a downed
+// player can still call for a medic). playerMessageEvent no longer applies it (Project Reality).
 inline bool chatSenderIsDown(GameServer::IEventWrapper& wrapper, world::IPlayer* sender)
 {
     if (!sender->getIsAlive())                                               // +0x6C
@@ -4005,7 +4060,8 @@ inline bool chatReceiverIsDown(world::IPlayer* receiver)
 {
     return !receiver->getIsAlive() || receiver->getIsManDown();
 }
-// filterMessage's own dead test (cases 4, 5, 14): alive / man-down only, no channel exemption.
+// filterMessage's own dead test (case 4; PR dropped it from 5 and 14): alive / man-down only, no
+// channel exemption.
 inline bool chatSenderIsDownNoRevive(world::IPlayer* sender)
 {
     return !sender->getIsAlive() || sender->getIsManDown();
@@ -4013,8 +4069,7 @@ inline bool chatSenderIsDownNoRevive(world::IPlayer* sender)
 } // namespace
 
 // Routes non-spam messages to started connections. Server channels bypass sender
-// requirements; other channels require a sender and restrict dead senders to dead
-// receivers before filterMessage decides delivery.
+// requirements; other channels require a sender, and filterMessage decides delivery.
 void GameServer::playerMessageEvent(IEventWrapper& wrapper)
 {
     world::IPlayer* const sender = wrapper.getSenderId() == -1
@@ -4039,13 +4094,9 @@ void GameServer::playerMessageEvent(IEventWrapper& wrapper)
         world::IPlayer* const player = connection->getPlayer();              // +0x18
         if (!player)
             continue;
-        if (wrapper.getChannel() != 12 && wrapper.getChannel() != 13)
-        {
-            const bool senderDown   = chatSenderIsDown(wrapper, sender);
-            const bool receiverDown = chatReceiverIsDown(player);
-            if (senderDown && receiverDown != senderDown)
-                continue;
-        }
+        // [CHOSEN, not recovered] Project Reality: dead and man-down senders reach living players
+        // too. Retail dropped their messages here for everyone but other dead or man-down players;
+        // PR's Windows server stores "not down" for every sender (allowDeadToChat, PE 0x445FD3).
         if (filterMessage(wrapper, sender, player))
             wrapper.sendMessage(static_cast<ServerConnection*>(connection));
     }
@@ -4129,8 +4180,8 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
         const float distanceSq = chatDistanceSq(sv, rv);
         if (wrapper.getChannel() == 18 && m_messageDistanceSqB >= distanceSq)   // +0xAC
             return true;
-        if (receiver->getIsCommander())
-            return false;
+        // [CHOSEN, not recovered] Project Reality's Linux server drops retail's "a commander never
+        // receives this" test here (allowDeadToChat, ELF 0x458451).
         if (sender->getSquadId() != receiver->getSquadId())                  // +0x10C
             return false;
         return filterTeamTail(wrapper, sender, receiver);
@@ -4149,9 +4200,9 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
 
     case 5:
     {
-        const bool senderDown   = chatSenderIsDownNoRevive(sender);
-        const bool receiverDown = chatReceiverIsDown(receiver);
-        if (sender == receiver || (senderDown && receiverDown != senderDown))
+        // [CHOSEN, not recovered] Project Reality's Linux server drops the dead-to-dead test here
+        // (allowDeadToChat, ELF 0x457F12).
+        if (sender == receiver)
             return false;
         if (wrapper.getFlags() == receiver->getSquadId())
             return receiver->getTeam() == sender->getTeam();
@@ -4250,9 +4301,9 @@ bool GameServer::filterMessage(IEventWrapper& wrapper, world::IPlayer* sender, w
 
     case 14:
     {
-        const bool senderDown   = chatSenderIsDownNoRevive(sender);
-        const bool receiverDown = chatReceiverIsDown(receiver);
-        if (sender == receiver || (senderDown && receiverDown != senderDown))
+        // [CHOSEN, not recovered] Project Reality's Linux server drops the dead-to-dead test here
+        // (allowDeadToChat, ELF 0x4587FF / 0x458819).
+        if (sender == receiver)
             return false;
         return wrapper.getFlags() == receiver->getId();                      // +0x14 vs +0x54
     }

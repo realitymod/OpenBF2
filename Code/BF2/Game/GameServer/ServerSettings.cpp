@@ -130,6 +130,10 @@ void ServerSettings::save(std::ostream& out)
     out << "sv.radioBlockedDurationTime " << m_radioBlockedDuration << std::endl;
     out << "sv.numReservedSlots " << m_numReservedSlots << std::endl;
     out << "sv.friendlyFireWithMines " << m_friendlyFireWithMines << std::endl;
+    out << "sv.ghostScopeRefreshTicks " << m_ghostScopeRefreshTicks << std::endl;   // [CHOSEN, not recovered]
+    out << "sv.actionBufferMaxSize " << m_actionBufferMaxSize << std::endl;         // [CHOSEN, not recovered]
+    out << "sv.maxPacketSize " << m_maxPacketSize << std::endl;                     // [CHOSEN, not recovered]
+    out << "sv.connectionTimeout " << m_connectionTimeout << std::endl;             // [CHOSEN, not recovered]
 }
 
 // Serializes settings and writes the script in one operation. Returns false for
@@ -213,6 +217,10 @@ ServerSettings::ServerSettings()
     m_useGlobalUnlocks             = true;     // +0xF7
     m_friendlyFireWithMines        = false;    // +0x100
     m_noVehicles                   = false;    // +0x101
+    m_ghostScopeRefreshTicks       = 4;        // [CHOSEN, not recovered] Project Reality's value
+    m_actionBufferMaxSize          = 2;        // [CHOSEN, not recovered] Project Reality's values
+    m_maxPacketSize                = 0x540;
+    m_connectionTimeout            = 45000;
 
     setMaxPlayers(16);                         // the result string is discarded
 }
@@ -258,8 +266,10 @@ std::string ServerSettings::setInternet(bool value)
 }
 
 // Sets the player limit, refusing a changed value after server initialization.
-// Caps the request at 64 without a lower bound; a nonzero command-line override
+// Caps the request at 100 without a lower bound; a nonzero command-line override
 // takes precedence. Returns an empty string on success or the refusal text.
+// [CHOSEN, not recovered] Retail caps at 64. PR's server patches the cap out and admits 100
+// through its connection pool; capping at NetServer::ConnectionPoolSize keeps one per player.
 std::string ServerSettings::setMaxPlayers(int value)
 {
     IGameServer* server = 0;
@@ -269,7 +279,7 @@ std::string ServerSettings::setMaxPlayers(int value)
     if (value != m_maxPlayers && server != 0 && server->getInitComplete())   // vt +0x88
         return std::string("Cannot change sv.maxPlayers while running.");
 
-    int clamped = (value < 65) ? value : 64;              // upper clamp only
+    int clamped = (value < 101) ? value : 100;            // upper clamp only
 
     if (settings != 0)
     {
@@ -330,12 +340,10 @@ float ServerSettings::getManDownTime() const
     return m_manDownTime;               // +0x6C
 }
 
-// [CHOSEN, not recovered] getNumPlayersNeededToStart currently returns 2 before
-// its original ranked/configured logic. The following getters retain fixed ranked
-// overrides for unlocks, coop settings, and team ratio.
+// Ranked servers need 8 players above 32 slots, otherwise 6; unranked servers use the setting.
+// The following getters retain fixed ranked overrides for unlocks, coop settings, and team ratio.
 int ServerSettings::getNumPlayersNeededToStart() const
 {
-    return 2;
     if (m_ranked)                       // +0xF5
         return (getMaxPlayers() >= 33 ? 1 : 0) * 2 + 6;
     return m_playersNeededToStart;      // +0x58

@@ -38,6 +38,37 @@ extern OldConsole* g_executingConsole;       // ds:0x8AC3C88 - see handleCommand
 // Shared mutable output sink for callers that discard console output.
 std::string Console::ignoredString_;
 
+namespace {
+
+// [CHOSEN interim] Per-depth block state for handleCommand: if/elseIf/else branches, beginRem and
+// beginNoExecution. Retail keeps it in each script's Level; move it there when the Level's
+// [UNRESOLVED] tail fields are identified.
+const int kMaxBlockDepth = 10;
+struct BranchState { bool executing; bool branchTaken; int skipNesting; };
+std::vector<BranchState> s_branch[kMaxBlockDepth + 1];
+int s_remDepth[kMaxBlockDepth + 1];
+int s_noExecDepth[kMaxBlockDepth + 1];
+
+int blockStateIndex(int depth)
+{
+    return (depth >= 0 && depth <= kMaxBlockDepth) ? depth : 0;
+}
+
+// [CHOSEN, not recovered] Ends the block state of a finished script's depth. Retail's state lives
+// in the script's own Level, so a block a script leaves open (PR's us_jet_a10a_sp.tweak ends inside
+// a beginrem) dies with it. Kept per depth, it leaked into the next script at that depth and turned
+// a whole level Init.con into a comment.
+void clearBlockState(int depth)
+{
+    if (depth < 1 || depth > kMaxBlockDepth)   // deeper scripts share index 0 with the top level
+        return;
+    s_branch[depth].clear();
+    s_remDepth[depth] = 0;
+    s_noExecDepth[depth] = 0;
+}
+
+} // namespace
+
 // Evaluates a console expression and writes a diagnostic to error on invalid syntax.
 // Equality compares strings; ordering uses atof; boolean operations use atoi.
 // Unary negation arrives as lhs="!" or "not", op=operand and an empty rhs.
@@ -366,13 +397,28 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
     }
 
     // read: the command is searched for '>' — output redirection.
+    // Only the first '>' is considered, and only when it starts the line or follows whitespace, so
+    // "->" is never a redirect. ">>" appends. The filename length is the end index, not end - start,
+    // as shipped; the substring clamps at the end of the line.
     std::string line = cmd;
-    const std::string::size_type redirect = line.find('>');
+    std::string::size_type redirect = line.find('>');
+    if (redirect != std::string::npos && redirect != 0 && !std::isspace(line[redirect - 1]))
+        redirect = std::string::npos;
     if (redirect != std::string::npos)
     {
-        // [CHOSEN] the split. The binary parses a filename and an append flag into
-        // m_outputRedirectFile / m_outputRedirectAppend; the exact tokenisation was not read.
-        m_outputRedirectFile = line.substr(redirect + 1);
+        m_outputRedirectAppend = false;
+        std::string::size_type start = redirect + 1;
+        if (start < line.size() && line[start] == '>')
+        {
+            m_outputRedirectAppend = true;
+            ++start;
+        }
+        while (start < line.size() && (line[start] == ' ' || line[start] == '\t'))
+            ++start;
+        std::string::size_type end = start + 1;
+        while (end < line.size() && line[end] != ' ' && line[end] != '\t')
+            ++end;
+        m_outputRedirectFile = line.substr(start, end);
         line = line.substr(0, redirect);
     }
 
@@ -389,18 +435,17 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
     if (line.find("rem ", 0) == 0 || line == "rem")
         return 1;
 
+    // After "return" every remaining line of the script is accepted unexecuted, block keywords included.
+    if (m_currentLevel && m_currentLevel->m_returned)
+        return 1;
+
     // Handles conditional branches and script execution. Skipped branches only process nesting keywords.
-    // [CHOSEN interim] Branch state is stored by parser depth; move it into Level when its [UNRESOLVED] tail fields are identified.
+    // Branch, comment and no-execution state is per depth; see s_branch above.
     {
-        struct BranchState { bool executing; bool branchTaken; int skipNesting; };
-        static std::vector<BranchState> s_branch[10 + 1];
-        std::vector<BranchState>& stack = s_branch[(m_depth >= 0 && m_depth <= 10) ? m_depth : 0];
+        std::vector<BranchState>& stack = s_branch[blockStateIndex(m_depth)];
 
         // Comment and no-execution blocks skip statements and support nested begin/end pairs.
-        // [CHOSEN interim] Their counters are stored by parser depth until the Level fields are identified.
-        static int s_remDepth[10 + 1];
-        static int s_noExecDepth[10 + 1];
-        const int levelIdx = (m_depth >= 0 && m_depth <= 10) ? m_depth : 0;
+        const int levelIdx = blockStateIndex(m_depth);
         int& remDepth    = s_remDepth[levelIdx];
         int& noExecDepth = s_noExecDepth[levelIdx];
 
@@ -442,6 +487,29 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
 
         const bool skipping = !stack.empty() && !stack.back().executing;
 
+        // As retail (prbf2_l64ded OldConsole::handleCommand): operands go through getArgs, so quotes
+        // are stripped and every operand is expanded, and a condition that fails to evaluate opens
+        // no block. PR content relies on both: `elseIf v_arg2 == "ch"`, and a server-side
+        // `if v_arg1 != BF2Editor` with an empty v_arg1 that errors and so runs its body.
+        auto evaluateCondition = [this, &kin](const char* missingExpression, bool& cond, std::string& error) {
+            std::string operands[13], raw[13];
+            const int expandFrom = (m_currentLevel && m_currentLevel->m_unknown18) ? 11 : 1;
+            const int count = getArgs(kin, operands, raw, 13, error, expandFrom - 1);
+            if (count < 0)
+                return false;
+            if (count == 0)
+            {
+                error = missingExpression;
+                return false;
+            }
+            if (count > 3)
+            {
+                error = "Syntax error in boolean expression!";
+                return false;
+            }
+            return calcBooleanExpr(operands[0], operands[1], operands[2], cond, error);
+        };
+
         if (compareIgnoreCase(kw, "if") == 0)
         {
             if (skipping)
@@ -449,12 +517,13 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 ++stack.back().skipNesting;              // nested if in a dead branch: count only
                 return 1;
             }
-            std::string lhs, op, rhs, value;
-            kin >> lhs; kin >> op; kin >> rhs;
-            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
-            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
+            bool cond = false;
             std::string error;
-            const bool cond = console_expr(lhs, op, rhs, error);
+            if (!evaluateCondition("\"if\" requires a expression!", cond, error))
+            {
+                result = error;
+                return 2;
+            }
             BranchState next;
             next.executing = cond;
             next.branchTaken = cond;
@@ -467,12 +536,13 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
             if (skipping && stack.back().skipNesting > 0) return 1;
             if (stack.empty()) { result = "Can not have an \"elseIf\" without an \"if\"!"; return 2; }
             if (stack.back().branchTaken) { stack.back().executing = false; return 1; }
-            std::string lhs, op, rhs, value;
-            kin >> lhs; kin >> op; kin >> rhs;
-            if (exchangeVariable(lhs, value) || exchangeConstant(lhs, value)) lhs = value;
-            if (exchangeVariable(rhs, value) || exchangeConstant(rhs, value)) rhs = value;
+            bool cond = false;
             std::string error;
-            const bool cond = console_expr(lhs, op, rhs, error);
+            if (!evaluateCondition("\"elseIf\" requires a expression!", cond, error))
+            {
+                result = error;
+                return 2;
+            }
             stack.back().executing = cond;
             stack.back().branchTaken = cond;
             return 1;
@@ -519,6 +589,18 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
             return 2;
         }
 
+        // return ends the current script; the top level has no script to end.
+        if (compareIgnoreCase(kw, "return") == 0)
+        {
+            if (m_depth == 0)
+            {
+                result = "\"return\" not allowed on the highest level!";
+                return 2;
+            }
+            m_currentLevel->m_returned = true;
+            return 1;
+        }
+
         // quit and exit invoke the optional exit callback, then report the same message unconditionally.
         // They work at any depth and return status 0 so executeLine can display the result.
         if (compareIgnoreCase(kw, "quit") == 0 || compareIgnoreCase(kw, "exit") == 0)
@@ -527,6 +609,84 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 m_exitCallBack(m_exitCallBackData);        // +0x15C
             result = "*** Game will exit! **";
             return 0;
+        }
+
+        // var and const declare in the current scope, as retail (prbf2_l64ded handleCommand). The
+        // declared name is the one token left unexpanded. Redeclaring a var overwrites it and reports
+        // it but succeeds; redeclaring a const keeps the old value and fails.
+        const bool isVar = compareIgnoreCase(kw, "var") == 0;
+        if (isVar || compareIgnoreCase(kw, "const") == 0)
+        {
+            std::string tokens[13], raw[13];
+            const int expandFrom = (m_currentLevel && m_currentLevel->m_unknown18) ? 11 : 1;
+            const int count = getArgs(kin, tokens, raw, 13, result, expandFrom);
+            if (count < 0)
+                return 2;
+            const bool assigns = count == 3 && raw[1] == "=";
+            if (isVar)
+            {
+                if (count != 1 && !assigns)
+                {
+                    result = "\"var\" syntax: (variableName [= initValue])!";
+                    return 2;
+                }
+                if (compareIgnoreCase(raw[0].c_str(), "v_", 2) != 0)
+                {
+                    result = "The variable name must begin with \"v_\"!";
+                    return 2;
+                }
+                if (!addVariable(raw[0], tokens[2]))
+                    result = "Variable redefinition \"" + raw[0] + "\"!";
+                return 1;
+            }
+            if (!assigns)
+            {
+                result = "\"const\" syntax: (constName = value)!";
+                return 2;
+            }
+            if (compareIgnoreCase(raw[0].c_str(), "c_", 2) != 0)
+            {
+                result = "The constant name must begin with \"c_\"!";
+                return 2;
+            }
+            if (!addConstant(raw[0], tokens[2]))
+            {
+                result = "Constant redefinition \"" + raw[0] + "\"!";
+                return 2;
+            }
+            return 1;
+        }
+
+        // A line starting with a v_ or c_ name evaluates it into the result; `v_name = value` assigns
+        // an existing variable. Constants cannot be assigned.
+        const bool isVariable = compareIgnoreCase(kw.c_str(), "v_", 2) == 0;
+        if (isVariable || compareIgnoreCase(kw.c_str(), "c_", 2) == 0)
+        {
+            std::string tokens[13], raw[13];
+            const int expandFrom = (m_currentLevel && m_currentLevel->m_unknown18) ? 11 : 1;
+            const int count = getArgs(kin, tokens, raw, 13, result, expandFrom - 1);
+            if (count < 0)
+                return 2;
+            if (!isVariable && count != 0)
+            {
+                result = "Wrong syntax!";
+                return 2;
+            }
+            std::string error;
+            if (!exchangeVarsAndConsts(kw, result, error))
+            {
+                result = error;
+                return 2;
+            }
+            if (tokens[0].empty())
+                return 0;
+            if (count != 2 || tokens[0] != "=")
+            {
+                result = "Wrong syntax!";
+                return 2;
+            }
+            setVariable(kw, tokens[1]);
+            return 1;
         }
 
         // Parses the filename and up to eight script arguments, stripping quotes and expanding variables and constants.
@@ -602,11 +762,29 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 std::string rawArgs[12];
                 const int expandFrom = (m_currentLevel && m_currentLevel->m_unknown18) ? 11 : 1;
                 std::string argError;
-                const int argc = getArgs(in, args, rawArgs, 12, argError, expandFrom - 1);
+                int argc = getArgs(in, args, rawArgs, 12, argError, expandFrom - 1);
                 if (argc < 0)
                 {
                     result = argError;
                     return 0;
+                }
+
+                // "-> v_name" captures the method's result into a variable and is not passed on.
+                std::string captureVariable;
+                for (int i = 0; i < argc; ++i)
+                {
+                    if (compareIgnoreCase(rawArgs[i].c_str(), "->") != 0)
+                        continue;
+                    if (argc < i + 2) { result = "A variable is required after \"->\"!"; return 2; }
+                    if (argc > i + 3) { result = "There can only be one variable after \"->\"!"; return 2; }
+                    if (compareIgnoreCase(rawArgs[i + 1].c_str(), "v_", 2) != 0)
+                    {
+                        result = "The variable after \"->\" must have a name that begins with \"v_\"!";
+                        return 2;
+                    }
+                    captureVariable = rawArgs[i + 1];
+                    argc = i;
+                    break;
                 }
 
                 if (!binding->isActive())                          // vtbl +0x30
@@ -658,6 +836,8 @@ int OldConsole::handleCommand(const std::string& cmd, std::string& result, Acces
                 g_executingConsole = this;
 
                 result = binding->execute(args, argc);             // vtbl +0x58, returns by value
+                if (!captureVariable.empty() && !setVariable(captureVariable, result))
+                    addVariable(captureVariable, result);
 
                 // Status 0 exposes the binding's result to output or redirection; status 1 would suppress it.
                 // An empty result remains silent through output().
@@ -719,7 +899,7 @@ void OldConsole::Level::reset()
     m_ifOpen      = false;
     m_elseSeen    = false;
 
-    m_unknown40 = false;
+    m_returned = false;
 }
 
 // Constructs the console at full access with empty global scope and enabled echo/error output.
@@ -1670,7 +1850,10 @@ bool OldConsole::run(const std::string& filePath,
         // Deliberate robustness against malformed content, and it is why one bad .con cannot
         // permanently corrupt the console's nesting state.
         while (savedDepth < m_depth)
+        {
+            clearBlockState(m_depth);          // [CHOSEN, not recovered] see clearBlockState
             decDepth();
+        }
 
         delete[] text;
     }

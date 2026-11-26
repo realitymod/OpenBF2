@@ -110,6 +110,14 @@ public:
     // The lowest of the two feet (9, 4) and the head (47).
     hfe::Vec3 getLowestVisiblePosition();
 
+    // [CHOSEN, not recovered] Project Reality's body dragging. While a drag is set, every step
+    // pulls particle `particle` toward `target` with an acceleration of
+    // acceleration * distance^exponent; setDrag also wakes the ragdoll. An out-of-range particle
+    // index is ignored by the step.
+    void setDrag(int particle, const hfe::Vec3& target, float acceleration, float exponent);
+    void clearDrag();
+    void applyDrag();
+
     // Shared collision candidates for one constraint solve; cleared by restoreCollidingObjects.
     static std::vector<hfe::world::IObject*> m_objects;
 
@@ -140,6 +148,12 @@ public:
     /* +0x5D */ bool  m_isClient;
     /* +0x5E */ bool  m_firstNetState;          // ctor 1; the first readCurrentState snaps positions
     /* +0x5F */ bool  m_settled;                // set the first time a particle hits anything
+
+    // [CHOSEN, not recovered] setDrag's state; m_dragParticle is -1 while nothing is dragged.
+    int       m_dragParticle;
+    hfe::Vec3 m_dragTarget;
+    float     m_dragAcceleration;
+    float     m_dragExponent;
 };
 
 } // namespace anim

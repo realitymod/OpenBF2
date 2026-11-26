@@ -14,7 +14,7 @@ namespace BuildNrUtil {
 // . Lazily formats "1.5.3153-802.0" into a file-scope buffer and returns it.
 const char* getBuildNrString();
 
-// . `return 0x150C5100;` - the network protocol version, not the build number.
+// . Retail `return 0x150C5100;`, PR's 0x150C5101 here - the network protocol version, not the build number.
 // GameServer::startServer hands it to io::NetServer::setVersion, and a server reporting a different
 // value is rejected by stock clients (see Game/GameServer/GameServer.cpp:345).
 int getNetVersionNumber();

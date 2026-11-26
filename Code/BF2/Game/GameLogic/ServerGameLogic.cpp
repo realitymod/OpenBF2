@@ -701,6 +701,7 @@ void ServerGameLogic::uPlayingInsideGameArea(float deltaTime)
         world::IPlayer* player = *it;
 
         if (!player->getIsAlive()                                                    // +0x6C
+            || static_cast<Player*>(player)->m_ignoresCombatArea                    // [CHOSEN, not recovered]
             || CombatAreaManager::getInstance()->isPlayerInside(player))
         {
             static_cast<Player*>(player)->m_timeOutSideWorld = 0.0f;                 // Player +0x24C
@@ -1104,6 +1105,36 @@ world::IPlayerControlObject* controlObjectAtOrAbove(world::IObject* object)
     return 0;
 }
 
+// [CHOSEN, not recovered] Project Reality's eighth seat key, which reaches seats past the eighth: the
+// next free seat after the current one in seat order, wrapping around, or seat 0 when every other
+// seat is taken. While the key is held, the last answer repeats for half a second so the player
+// does not step through the seats every tick.
+const unsigned int kSeatCycleRepeatTicks = 15;
+std::map<int, std::pair<unsigned int, int> > g_lastSeatCycle;   // player id -> (tick, seat)
+
+int nextFreeSeat(world::IPlayer* player, world::IPlayerControlObject* rootPco,
+                 world::IPlayerControlObject* currentPco)
+{
+    const unsigned int now = static_cast<unsigned int>(WorldPref::getTickCount());
+    std::map<int, std::pair<unsigned int, int> >::iterator last = g_lastSeatCycle.find(player->getId());
+    if (last != g_lastSeatCycle.end() && now - last->second.first < kSeatCycleRepeatTicks)
+        return last->second.second;
+
+    std::map<int, world::IPlayerControlObject*>* const pcos = rootPco->getPcos();
+    std::map<int, world::IPlayerControlObject*>::iterator it = pcos->upper_bound(currentPco->getPcoId());
+    for (std::size_t step = 1; step < pcos->size(); ++step, ++it)
+    {
+        if (it == pcos->end())
+            it = pcos->begin();
+        if (!it->second->isOccupied())
+        {
+            g_lastSeatCycle[player->getId()] = std::make_pair(now, it->first);
+            return it->first;
+        }
+    }
+    return 0;
+}
+
 } // anonymous namespace
 
 namespace world {
@@ -1442,7 +1473,7 @@ void ServerGameLogic::checkPlayerTriggers(world::IPlayer* player, world::IObject
 
     if (seat != 0)
     {
-        const int requestedPcoId = seat - 1;
+        int requestedPcoId = seat - 1;
 
         // Search seats from the hierarchy root, while identifying the current seat from the player's vehicle.
         world::IPlayerControlObject* rootPco =
@@ -1450,6 +1481,9 @@ void ServerGameLogic::checkPlayerTriggers(world::IPlayer* player, world::IObject
         if (rootPco)
         {
             world::IPlayerControlObject* currentPco = controlObjectAtOrAbove(vehicle);
+            // [CHOSEN, not recovered] See nextFreeSeat.
+            if (requestedPcoId == 7 && !player->getIsAIPlayer())
+                requestedPcoId = nextFreeSeat(player, rootPco, currentPco);
             const bool blocked = playerHoldsSelectableWeapon(effectiveControlObject(player));
 
             bool sendSwitchAck = true;
@@ -3549,6 +3583,62 @@ bool ServerGameLogic::killPlayer(world::IPlayer* player, bool a, bool b)
         python::pythonHost()->handleEvent(static_cast<ScriptEvent>(3), args.get());
     }
     return result;
+}
+
+// [CHOSEN, not recovered] See the header. Mirrors toggleEntryPoint's exit half: the seat's exit
+// check, the exit, the 1-second toggle stamp, the momentum hand-off and the AI notify. The
+// hand-off reads the speed modifier only from PlayerControlObject templates, where
+// toggleEntryPoint also reads it, out of bounds, from a ladder's.
+bool ServerGameLogic::exitVehicleForScript(world::IPlayer* player)
+{
+    typedef world::object_detail::LayoutAccess L;
+
+    world::IObject* const vehicle = player->getVehicle();
+    if (!vehicle || vehicle == player->getFreeCamera() || vehicle == player->getDefaultVehicle())
+        return false;
+
+    world::IPlayerControlObject* const pco = static_cast<world::IPlayerControlObject*>(
+        vehicle->queryInterface(world::IID_IPlayerControlObject));
+    if (!pco || !L::objectTemplate(vehicle)->queryInterface(world::IID_IPlayerControlObjectTemplate))
+        return false;
+    if (!pco->isAllowedToExit())
+        return false;
+    if (!game->exitVehicle(player, true, true))
+        return false;
+
+    static_cast<Player*>(player)->m_worldTime = static_cast<float>(WorldPref::getWorldTime());
+
+    world::IObject* const soldier = player->getVehicle();
+    if (L::objectTemplate(soldier)->getClassID() == world::CID_SoldierTemplate)
+    {
+        world::IPhysicsNode* const from =
+            static_cast<world::IPhysicsNode*>(L::physicsNode(world::getRootParent(vehicle)));
+        world::IPhysicsNode* const to = static_cast<world::IPhysicsNode*>(L::physicsNode(soldier));
+        if (from && to)
+        {
+            const world::IObjectTemplate* const vt = L::objectTemplate(vehicle);
+            float modifier = 0.7f;
+            if (vt->getClassID() == world::CID_PlayerControlObjectTemplate)
+                modifier = static_cast<const world::PlayerControlObjectTemplate*>(vt)
+                               ->m_positionalSpeedModifier;
+
+            const Vec3& speed = from->getPositionalSpeed();
+            Vec3 carried;
+            carried.x = modifier * speed.x;
+            carried.y = modifier * speed.y;
+            carried.z = modifier * speed.z;
+            to->setPositionalSpeed(carried);
+        }
+    }
+
+    if (ai::g_aiInstance && ai::aiInstance()->isInitialized())
+    {
+        AiPlayerExitPayload payload;
+        payload.playerId = player->getId();
+        payload.aiObject = L::aiObject(vehicle);
+        eventManager->postEvent(ECAI, 3, &payload, 0.0f);
+    }
+    return true;
 }
 
 // Finds the nearest loose kit within radius, excluding kits parented to soldiers.

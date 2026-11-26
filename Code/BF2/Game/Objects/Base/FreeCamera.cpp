@@ -1048,47 +1048,11 @@ const Mat4& FreeCamera::getTransformationFollowPlayer(float /*deltaTime*/)
     return output;
 }
 
-// Follows the next living human teammate, wrapping around; retains the ID if none is available.
-// Requires an occupant. Ignores the argument and leaves trace timing to the caller.
+// [CHOSEN, not recovered] Project Reality turns off following players with the free camera, so
+// this leaves m_followedPlayerId unchanged. Retail moved it to the next living human teammate,
+// wrapping around; the recovered body is in the git history.
 void FreeCamera::followNextPlayer(bool /*unused*/)
 {
-    const std::list<IPlayer*>& players = playerManager->getPlayers();
-    int firstOtherId = -1;
-    bool passedCurrent = false;
-    for (std::list<IPlayer*>::const_iterator it = players.begin(); it != players.end(); ++it)
-    {
-        IPlayer* player = *it;
-        // [PLATFORM] PE reads the occupant's team first; ELF reads the candidate's first.
-#if defined(_WIN32)
-        const int occupantTeam = m_occupingPlayer.get()->getTeam();
-        const int candidateTeam = player->getTeam();
-#else
-        const int candidateTeam = player->getTeam();
-        const int occupantTeam = m_occupingPlayer.get()->getTeam();
-#endif
-        if (candidateTeam != occupantTeam || !player->getIsAlive() || player->getIsAIPlayer())
-            continue;
-
-        const int candidateId = player->getId();
-        if (candidateId == m_occupingPlayer.get()->getId())
-            continue;
-        if (player->getId() == m_followedPlayerId)
-        {
-            passedCurrent = true;
-        }
-        else
-        {
-            if (firstOtherId == -1)
-                firstOtherId = player->getId();
-            if (passedCurrent)
-            {
-                m_followedPlayerId = player->getId();
-                return;
-            }
-        }
-    }
-    if (firstOtherId != -1)
-        m_followedPlayerId = firstOtherId;
 }
 
 } // namespace world

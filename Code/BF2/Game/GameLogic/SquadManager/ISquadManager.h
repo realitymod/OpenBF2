@@ -8,6 +8,7 @@
 #include <string>
 
 #include "../../../Core/IBase.h"
+#include "../../Utility/Vars.h"
 #include "ISquadInfo.h"
 
 namespace dice {
@@ -59,6 +60,13 @@ protected:
     // after these slots, which is only consistent with it not being part of this interface.
     ~ISquadManager() {}
 };
+
+// [CHOSEN, not recovered] Project Reality's squad size; retail hard-codes 6. An engine Var, not a
+// server setting, so the server's join gate and the client's HUD read the same value from the mod.
+inline int getMaxSquadMembers()
+{
+    return *Vars::getInt("squad-maxMembers", 8);
+}
 
 } // namespace hfe
 } // namespace dice

@@ -18,7 +18,8 @@ namespace world {
 // Fixed sleep-policy settings and maximum speed. No code mutates them after initialization.
 static const int   s_forceSleep = 0;                 // ds:0x8ABA6B8 (handle 0x8ABA6BC)
 static const int   s_neverSleep = 0;                 // ds:0x8ABA6C0 (handle 0x8ABA6C4)
-static const float s_maxPositionalSpeed = 1500.0f;   // ds:0x8ABA6D0 (handle 0x8ABA6D4)
+// [CHOSEN, not recovered] Project Reality raises the maximum speed to 1800; retail is 1500.0f.
+static const float s_maxPositionalSpeed = 1800.0f;   // ds:0x8ABA6D0 (handle 0x8ABA6D4)
 // ds:0x8ABA6C8 = 1 (handle 0x8ABA6CC): initialised, referenced by no function - not carried.
 
 static const float EPS = 0.000001f;                  // the family's snap threshold, a literal everywhere

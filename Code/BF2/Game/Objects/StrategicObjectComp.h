@@ -52,6 +52,10 @@ public:
     const Vec3& getHolderPosition() const override;
     virtual ~StrategicObjectComp(); // PE +74; ELF +74/+78, after the interface slots
 
+    // [CHOSEN, not recovered] The template's map-icon size. Non-virtual so the
+    // retail IStrategicObjectComp table is unchanged; StrategicObjectComp is its only implementation.
+    float getIconSize() const;
+
 private:
     friend class ::dice::hfe::GameLogic;
     // RendDX9's nametag pass reads m_holder at its fixed +0x14 (retail 0x10130CA1, addTouchItem);

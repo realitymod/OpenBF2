@@ -130,6 +130,8 @@ public:
     bool shouldRefillBullets();
     bool needsRefill();
     int  getMaxRefillAmount();
+    // [CHOSEN, not recovered] The retail refillPercent body, which refillPercent now wraps.
+    float refillPercentUnscaled(float percent, bool testOnly);
 
 protected:
     // THE magazine vector. [0] is the loaded magazine's remaining rounds; [1..] are spares, each

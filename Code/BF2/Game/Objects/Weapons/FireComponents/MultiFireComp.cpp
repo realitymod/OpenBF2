@@ -367,6 +367,7 @@ bool MultiFireComp::launchProjectile(int index)
         if (!ignoreNetworkedProjectileOnClient(firearm()->getProjectileTemplate()))
         {
             IObject* const object = setupProjectile(origin, velocity);
+            notifyProjectileCreated(object);                     // [CHOSEN, not recovered]
             if (object)
             {
                 IProjectileObject* const projectile = static_cast<IProjectileObject*>(

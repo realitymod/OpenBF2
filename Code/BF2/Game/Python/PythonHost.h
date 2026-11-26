@@ -92,9 +92,10 @@ public:
                                                          //   handler table walk)
     void removePlayer(world::IPlayer*);
 
-    // Forwards nine strings by value to the console API. The string return type is [CHOSEN].
-    std::string consoleSendCommand(std::string, std::string, std::string, std::string, std::string,
-                                   std::string, std::string, std::string, std::string);
+    // The `pythonHost.sendCommand` console method's target: raises ConsoleSendCommand (33) with
+    // the command and its non-empty-terminated argument tuple. Always returns true.
+    bool consoleSendCommand(std::string, std::string, std::string, std::string, std::string,
+                            std::string, std::string, std::string, std::string);
 
 private:
     PythonHostData* m_data;                              // +0x04
@@ -121,8 +122,11 @@ class PyRef;
 PyRef buildArgs(const int& a0);                              // buildArgs<int>            0x807BF10
 PyRef buildArgs(const int& a0, const int& a1);               // buildArgs<int,int>        0x8105750
 PyRef buildArgs(world::IObject* const& a0, const int& a1);   // buildArgs<IObject*, int>  0x81719B0
+PyRef buildArgs(world::IObject* const& a0);                  // [CHOSEN, not recovered] ObjectSpawned
+PyRef buildArgs(world::IObject* const& a0, world::IObject* const& a1);   // [CHOSEN, not recovered] ProjectileCreated
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1);                // enterVehicle's event 23
 PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, const bool& a2); // enterVehicle's event 21
+PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, world::IObject* const& a2); // Soldier's event 6
 PyRef buildArgs(world::IPlayer* const& a0);                  // buildArgs<IPlayer*>       0x80A4860, 138 B
 PyRef buildArgs(world::IPlayer* const& a0, const int& a1);   // buildArgs<IPlayer*, int>  0x815BAB0, 178 B
 PyRef buildArgs(world::IPlayer* const& a0, const bool& a1);  // buildArgs<IPlayer*, bool> 0x8105350, 189 B - selectTeam's event 7

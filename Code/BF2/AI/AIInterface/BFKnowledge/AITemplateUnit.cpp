@@ -12,7 +12,6 @@
 #include "../../AIDLL/AI/Main/AISettingsInterfaces.h"   // IAISettings
 #include "../../AIDLL/AI/Main/CommonSingletonServer.h"
 
-#include "../../../Core/Debug.h"
 #include "../../../Core/Ids.h"
 #include "../../../Game/Objects/IObject.h"
 #include "../../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h"
@@ -45,9 +44,10 @@ io::PlayerInputMap pcoIdToPositionSelect(int pcoId)
     case 6: return io::PIPositionSelect7;
     case 7: return io::PIPositionSelect8;
     default:
-        Debug(DebugTypeError, "AI/AIInterface/BFKnowledge/AITemplateUnit.cpp", 66, "")
-            << "No valid PcoId found at position:" << pcoId;
-        return io::PINone;
+        // [CHOSEN, not recovered] Project Reality: seats past the eighth (vehicles with nine or
+        // more seats in coop) get the first seat's key. Retail stopped on a "No valid PcoId"
+        // error here.
+        return io::PIPositionSelect1;
     }
 }
 } // anonymous namespace

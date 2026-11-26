@@ -16,6 +16,7 @@ local changes small and documented alongside the affected dependency.
 | libogg 1.3.6 and libvorbis 1.3.7 | `libogg-1.3.6/` and `libvorbis-1.3.7/`; Xiph.Org sources | BF2Audio Ogg/Vorbis decoding |
 | Dear ImGui | `imgui/`; `v1.92.9b-docking`, commit `b48d1af` | Editor UI |
 | ImGuizmo | `ImGuizmo/`; tag `1.10`, commit `b796ac3` | Editor transform gizmo |
+| realitycore | `realitycore/`; yossizap/realitycore `src/_realitycore.c`, commit `35848fc`, with [local changes](realitycore/README.md) | Project Reality's `_realitycore` built-in Python module |
 
 The table describes the vendored inputs, not a promise that every SDK module is
 part of each executable. Build manifests select the files for each image.

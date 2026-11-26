@@ -583,7 +583,7 @@ void HudSquad::paintSquadRow(int team, int squad, int memberCount)
             getUpperCase(std::string(info->getSquadName().c_str())).c_str()),
         -21.0f, m_field0b4, c.r, c.g, c.b, c.a, 0);
     m_memberList->appendPositionedCell0x7c8210(6,
-        formatString(kSquadCountFormat, memberCount, 6),                       // capacity literal
+        formatString(kSquadCountFormat, memberCount, getMaxSquadMembers()),    // [CHOSEN, not recovered] retail 6
         0.0f, m_field0b4, c.r, c.g, c.b, c.a, 2);
     m_memberList->appendImageCell0x7c8300(7, m_textures[7], 15.0f, 15.0f, 0.0f, m_field0b0,
         kColor97E2B0.r, kColor97E2B0.g, kColor97E2B0.b, kColor97E2B0.a);
@@ -834,8 +834,8 @@ void HudSquad::fillSquadRows(const std::list<world::IPlayer*>& members, int team
 
 // 791740 (404 B). m_invitePlayers <- the selected ids that resolve to a player and are not
 // excluded, then padded with null entries.
-// The pad count is excluded - selected - (players in the local squad) + 6, all read from the
-// members; it goes negative (no padding) easily. As shipped.
+// The pad count is excluded - selected - (players in the local squad) + the squad size, all read
+// from the members; it goes negative (no padding) easily. As shipped.
 void HudSquad::rebuildInvitePlayers(const std::list<int>& selected)
 {
     m_invitePlayers.clear();                                                    // +F4
@@ -854,7 +854,8 @@ void HudSquad::rebuildInvitePlayers(const std::list<int>& selected)
     const int selectedCount = static_cast<int>(m_selectedPlayers.size());      // +108
     const int excludedCount = static_cast<int>(m_excludedPlayers.size());      // +114
     const int padding = excludedCount - selectedCount
-        - world::playerManager->getNrOfPlayersInSquad(m_team, m_squadId) + 6;  // PE +0x9C
+        - world::playerManager->getNrOfPlayersInSquad(m_team, m_squadId)        // PE +0x9C
+        + getMaxSquadMembers();                                                 // [CHOSEN, not recovered] retail 6
     for (int i = 0; i < padding; ++i)
         m_invitePlayers.push_back(nullptr);
 }

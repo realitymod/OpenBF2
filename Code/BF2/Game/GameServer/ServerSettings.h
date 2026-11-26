@@ -196,6 +196,17 @@ public:
     bool  m_useGlobalUnlocks;            // +0xF7  true
     int   m_endOfRoundDelay;             // +0xF8  15
     // ... m_friendlyFireWithMines +0x100 (false) / m_noVehicles +0x101 (false) declared above ...
+
+    // [CHOSEN, not recovered] Project Reality setting appended past the retail layout. How often
+    // GameServer repeats a connection's ghost-scope pass: after a pass the scope timer is reloaded
+    // with (ticks - 1) * 0.1 s. Retail hard-codes 0.1 s, which is 2. At least 1.
+    int   m_ghostScopeRefreshTicks;      //        4
+
+    // [CHOSEN, not recovered] Project Reality's network limits. Retail hard-codes 4 queued actions
+    // per player, 640-byte packets for connection type 5 and a 10 s connection timeout.
+    int   m_actionBufferMaxSize;         //        2      2..4
+    int   m_maxPacketSize;               //        1344   connection type 5, 896..1344
+    int   m_connectionTimeout;           //        45000  ms, applied when the listener starts
 };
 
 // Reserved nicknames and their configuration filename.

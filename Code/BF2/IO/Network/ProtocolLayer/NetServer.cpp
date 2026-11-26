@@ -2,7 +2,7 @@
 
 #include "NetServer.h"
 #include "../../../Game/GameServer/BanList.h"   // isAddressBanned - the first gate
-#include "SWConnection.h"                    // init news 64 - needs the complete type
+#include "SWConnection.h"                    // init news the pool - needs the complete type
 #include "NetServerThread.h"                 // startReceiveThread news one
 #include "../NetworkLayer/Socket/UDPSocket.h" // _update drives the listen socket directly
 #include "../SocketManager.h"                // io::socketManager
@@ -44,7 +44,7 @@ NetServer::NetServer()
     , m_bInit(false)                                    // +0x47C
     , m_shuttingDown(false)                             // +0x47D  receive-thread exit
     , m_version(0)                                      // +0x484
-    , m_connectionTimeOut(10000)                        // +0x488
+    , m_connectionTimeOut(45000)                        // +0x488 [CHOSEN, not recovered] PR: retail 10000
     , m_time(0)                                         // +0x4A8
     , m_processedPacketCount(0)                         // +0x4AC
     , m_dword4B0(0)                                     // +0x4B0
@@ -228,7 +228,7 @@ int NetServer::getTime() const
 }
 
 // Initializes the listener. Returns zero on success, six for socket setup, seven for allocation, or nine for thread failure.
-// Registers packet filtering before opening the socket. The pool has 64 entries regardless of the free-ID limit.
+// Registers packet filtering before opening the socket. The pool has ConnectionPoolSize entries regardless of the free-ID limit.
 int NetServer::init(const std::string& address, unsigned int port, bool /* [UNRESOLVED] - the
                                         mangled name carries it, the body never reads it */)
 {
@@ -291,10 +291,10 @@ int NetServer::init(const std::string& address, unsigned int port, bool /* [UNRE
     if (!m_bitStreamIn)
         return 7;
 
-    // 8. sixty-four connection objects, hard-coded - see the hazard note above.
+    // 8. the connection pool, a fixed size independent of the free-ID limit.
     m_dataPacket.size = 0;
-    m_swConnections = new SWConnection*[64];                     // operator new[](256)
-    for (int i = 0; i <= 63; ++i)
+    m_swConnections = new SWConnection*[ConnectionPoolSize];
+    for (int i = 0; i < ConnectionPoolSize; ++i)
         m_swConnections[i] = new SWConnection();                 // operator new(0x108)
     // Each connection owns receive and send packet rings.
 
@@ -1149,7 +1149,7 @@ SWConnection* NetServer::allocConnection()
 {
     m_mutex4E4.lock();                                  // +0x4E4
 
-    for (int i = 0; i <= 63; ++i)
+    for (int i = 0; i < ConnectionPoolSize; ++i)
     {
         SWConnection* const c = m_swConnections[i];     // +0x4E8
         if (c)
@@ -1411,11 +1411,11 @@ unsigned int NetServer::sendPingResponse(int connectionId, unsigned int echoTime
     return m_listenSocket2->send(m_packetOutBuffer, bytes) ? 0u : 6u;   // m_packetOutBuffer == the stream's buffer
 }
 
-// Returns a connection to the 64-slot pool under its mutex. A full pool triggers a fatal diagnostic.
+// Returns a connection to the pool under its mutex. A full pool triggers a fatal diagnostic.
 void NetServer::freeConnection(SWConnection* connection)
 {
     m_mutex4E4.lock();
-    for (int i = 0; i <= 63; ++i)
+    for (int i = 0; i < ConnectionPoolSize; ++i)
     {
         if (!m_swConnections[i])
         {
@@ -1636,7 +1636,7 @@ void NetServer::shutDown()
     }
     if (m_swConnections)                                              // +0x4E8
     {
-        for (int i = 0; i <= 63; ++i)
+        for (int i = 0; i < ConnectionPoolSize; ++i)
         {
             SWConnection* const c = m_swConnections[i];
             if (c)

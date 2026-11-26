@@ -74,6 +74,10 @@ public:
     // each entry point's configured radius; false uses a flat 5 m radius for spawning.
     // [INFERRED] The parameter name does not describe that radius selection.
     void toggleEntryPoint(world::IPlayer* player, bool enter);
+    // [CHOSEN, not recovered] Project Reality's forced vehicle exit, for host.sgl_exitVehicle: the
+    // exit half of toggleEntryPoint without its cooldown and without entering another vehicle.
+    // Returns false when the player is not in a vehicle seat or the seat refuses the exit.
+    bool exitVehicleForScript(world::IPlayer* player);
     // Returns whether a nearby kit was picked up; callers can issue a new kit on failure.
     bool pickUpClosestKit(world::IPlayer* player, world::IObject* soldier,
                           float radius);

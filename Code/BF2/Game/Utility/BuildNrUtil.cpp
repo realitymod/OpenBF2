@@ -34,9 +34,11 @@ const char* getBuildNrString()
 
 // Protocol compatibility version; changing it causes stock peers to reject the
 // connection. [UNRESOLVED] Treat the complete value as opaque.
+// [CHOSEN, not recovered] Retail is 0x150C5100; PR's client and server use 0x150C5101
+// (prbf2_l64ded BuildNrUtil::getNetVersionNumber), so PR clients can join and stock ones cannot.
 int getNetVersionNumber()
 {
-    return 0x150C5100;
+    return 0x150C5101;
 }
 
 } // namespace BuildNrUtil

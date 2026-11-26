@@ -72,6 +72,10 @@ public:
     void updatePositionalDragAdvanced(float, float, float, float);
     void updatePositionalPhysics(float dt); // Hides the base implementation.
 
+    // [CHOSEN, not recovered] Friction contacts added since the last updatePhysics; nonzero while
+    // the soldier stands on something. Read by Python's soldier.getOnGround.
+    int getFrictionCount() const { return m_frictionCount; }
+
 protected:
     // Layout 0x90..0x10B, every default from the 238-byte ctor.
     /* +0x090 */ int     m_refCount;                 // ctor 1

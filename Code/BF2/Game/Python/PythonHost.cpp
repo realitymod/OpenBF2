@@ -19,6 +19,7 @@
 #include "../IGame.h"                   // persistence wrappers query IGameServer
 #include "../IGameServer.h"
 #include "../GameLogic/ServerGameLogic.h" // pers_plrSetUnlocks
+#include "../GameLogic/GameLogicExplosion.h" // [CHOSEN, not recovered] sgl_disableExplosionLatencyComp
 #include "../Persistence/PlayerUnlocks.h"
 #include "../Persistence/PlayerStats.h"
 #include "../Persistence/PlayerAwards.h"
@@ -43,10 +44,15 @@
 #include "../../Scene/Object/ObjectManager.h"      // trigger radius queries use the recovered class
 #include "../../Scene/Object/ObjectPredicator.h"   // world::ObjectPredicator - the trigger sweep's base
 #include "../Objects/IPlayer.h"          // the real interface - to_py(IPlayer*) reads getId
+#include "../../IO/Input/PlayerInput.h"  // pmgr_p_getInput
+#include "../GameLogic/Player.h"         // pmgr_p_setIgnoreCombatArea
+#include "../../Physics/LatencyCompensation.h"   // pmgr_p_getLatency
+#include "../Objects/Weapons/FireComponents/FireComp.h"   // sgl_addProjectileCreatedTemplate
 #include "../../Scene/Object/ObjectTypes/Game/IPlayerControlObject.h" // pmgr_p_get vehicle/weapon
 #include "../Objects/ISoldier.h"          // pmgr_p_get kit query
 #include "../Objects/Game/Kit.h"          // ISoldier::getKit -> IObject conversion
 #include "../GameLogic/SquadManager/ISquadManager.h" // pmgr_getCommander
+#include "../GameLogic/SquadManager/SquadOrder.h"    // sgl_getSquadOrder
 
 #include <algorithm>
 #include <iterator>
@@ -55,6 +61,9 @@
 #include <map>
 #include <set>
 #include <vector>
+
+// Project Reality's _realitycore module, vendored under External/realitycore.
+extern "C" void init_realitycore(void);
 
 namespace dice {
 namespace hfe {
@@ -504,6 +513,35 @@ PyRef buildArgs(world::IObject* const& a0, const int& a1)
     return result;
 }
 
+// [CHOSEN, not recovered] Not in retail: the ObjectSpawned script event's (object).
+PyRef buildArgs(world::IObject* const& a0)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(1);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
+// [CHOSEN, not recovered] Not in retail: the ProjectileCreated script event's (weapon, projectile).
+PyRef buildArgs(world::IObject* const& a0, world::IObject* const& a1)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(2);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+    PyTuple_SetItem(t, 1, to_py(a1));
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
 //  (225 B), dedicated PE 0x5404D0: Python command arguments.
 // Both images retain the initialized guard, three stealing tuple insertions in this order,
 // and the PyRef/increment then decrement transfer. to_py(vector<int>) builds a nested tuple.
@@ -592,6 +630,24 @@ PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, const bool
     PyTuple_SetItem(t, 0, to_py(a0));                     // steals
     PyTuple_SetItem(t, 1, to_py(a1));                     // steals
     PyTuple_SetItem(t, 2, PyInt_FromLong(a2 ? 1 : 0));    // steals
+
+    PyRef result(t);
+    Py_DECREF(t);
+    return result;
+}
+
+// Builds (player, oldWeapon, newWeapon) for the PlayerChangeWeapon callback; a null weapon becomes None.
+// [INFERRED] Body follows the sibling object builders; the retail instantiation has not been read.
+// Without this overload the call bound to the (IPlayer*, IObject*, bool) form and passed 1 as newWeapon.
+PyRef buildArgs(world::IPlayer* const& a0, world::IObject* const& a1, world::IObject* const& a2)
+{
+    if (!pythonHost()->isInitialized())
+        return PyRef();
+
+    PyObject* t = PyTuple_New(3);
+    PyTuple_SetItem(t, 0, to_py(a0));           // steals
+    PyTuple_SetItem(t, 1, to_py(a1));           // steals
+    PyTuple_SetItem(t, 2, to_py(a2));           // steals
 
     PyRef result(t);
     Py_DECREF(t);
@@ -819,6 +875,37 @@ void PythonHost::handleEvent(ScriptEvent eventId, PyObject* args)
     }
 }
 
+// The `pythonHost.sendCommand` console method: fires script event 33 (ConsoleSendCommand) with
+// (command, (args...)). The argument tuple ends at the last non-empty argument; empty ones before
+// it stay as ''. No initialized check, unlike buildArgs. Always returns true.
+bool PythonHost::consoleSendCommand(std::string command, std::string a1, std::string a2,
+                                    std::string a3, std::string a4, std::string a5,
+                                    std::string a6, std::string a7, std::string a8)
+{
+    const std::string* const args[8] = { &a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8 };
+
+    PyObject* const event = PyTuple_New(2);
+    PyTuple_SetItem(event, 0, PyString_FromString(command.c_str()));        // steals
+
+    int count = 0;
+    for (int i = 7; i >= 0; --i)
+    {
+        if (!args[i]->empty())
+        {
+            count = i + 1;
+            break;
+        }
+    }
+    PyObject* const commandArgs = PyTuple_New(count);
+    for (int i = 0; i < count; ++i)
+        PyTuple_SetItem(commandArgs, i, PyString_FromString(args[i]->c_str()));
+    PyTuple_SetItem(event, 1, commandArgs);
+
+    handleEvent(static_cast<ScriptEvent>(33), event);
+    Py_XDECREF(event);
+    return true;
+}
+
 // Invalidates the Python player wrapper after native lookup removal but before
 // deletion. Allocates arguments even before initialization and skips a missing
 // converter. The original successful call result is deliberately not released.
@@ -924,6 +1011,9 @@ PyObject* pmgr_getCommander(PyObject*, PyObject*);
 PyObject* pmgr_isIndexValid(PyObject*, PyObject*);
 PyObject* pmgr_p_get(PyObject*, PyObject*);
 PyObject* pmgr_p_set(PyObject*, PyObject*);
+PyObject* pmgr_p_getInput(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* pmgr_p_setIgnoreCombatArea(PyObject*, PyObject*); //   [CHOSEN, not recovered]
+PyObject* pmgr_p_getLatency(PyObject*, PyObject*);          //   [CHOSEN, not recovered]
 PyObject* pmgr_getScore(PyObject*, PyObject*);
 PyObject* pmgr_setScore(PyObject*, PyObject*);
 PyObject* pmgr_enableScoreEvents(PyObject*, PyObject*);
@@ -950,6 +1040,16 @@ PyObject* sgl_sendMedalEvent(PyObject*, PyObject*);
 PyObject* sgl_sendRankEvent(PyObject*, PyObject*);
 PyObject* sgl_sendHudEvent(PyObject*, PyObject*);
 PyObject* sgl_sendTextMessage(PyObject*, PyObject*);
+PyObject* sgl_kickPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
+PyObject* sgl_pickUpKit(PyObject*, PyObject*);              //   [CHOSEN, not recovered]
+PyObject* sgl_giveKit(PyObject*, PyObject*);                //   [CHOSEN, not recovered]
+PyObject* sgl_resetSquads(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* sgl_getSquadOrder(PyObject*, PyObject*);          //   [CHOSEN, not recovered]
+PyObject* sgl_killPlayer(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
+PyObject* sgl_exitVehicle(PyObject*, PyObject*);            //   [CHOSEN, not recovered]
+PyObject* sgl_selectItem(PyObject*, PyObject*);             //   [CHOSEN, not recovered]
+PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject*);   // [CHOSEN, not recovered]
+PyObject* sgl_addProjectileCreatedTemplate(PyObject*, PyObject*);  // [CHOSEN, not recovered]
 PyObject* gl_sendEndOfRoundData(PyObject*, PyObject*);
 PyObject* ss_getParam(PyObject*, PyObject*);
 PyObject* sgl_getSettingsBool(PyObject*, PyObject*);
@@ -1386,6 +1486,74 @@ PyObject* buildBulletStatsTuple(const std::map<unsigned int, unsigned short>& st
     return result;
 }
 
+// [CHOSEN, not recovered] Project Reality's player button reads; not a retail host method.
+// host.pmgr_p_getInput(playerId, inputId) returns the player's last handled input value for a
+// PlayerInputMap id (0-63): -1.0 to 1.0 for axes, 0.0 or 1.0 for buttons. Raises RuntimeError
+// for an unknown player or an id out of range.
+PyObject* pmgr_p_getInput(PyObject*, PyObject* args)
+{
+    int playerId;
+    int inputId;
+    if (py_arg<int>(args, 0, playerId) + py_arg<int>(args, 1, inputId))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+    if (inputId < 0 || inputId >= io::PINone)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "input id out of range");
+        return 0;
+    }
+
+    return PyFloat_FromDouble(player->getPlayerInput().inputs[inputId]);
+}
+
+// [CHOSEN, not recovered] Project Reality's combat-area exemption for jet pilots; not a retail host
+// method. host.pmgr_p_setIgnoreCombatArea(playerId, ignore): while set, the player is never counted
+// outside the combat areas, so the out-of-area countdown and damage stay off. Raises RuntimeError
+// for an unknown player.
+PyObject* pmgr_p_setIgnoreCombatArea(PyObject*, PyObject* args)
+{
+    int playerId;
+    int ignore;
+    if (py_arg<int>(args, 0, playerId) + py_arg<int>(args, 1, ignore))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    static_cast<Player*>(player)->setIgnoresCombatArea(ignore != 0);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's lag-compensation reads; not a retail host method.
+// host.pmgr_p_getLatency(playerId) returns the seconds by which the server rewinds the world for this
+// player's shots (LatencyCompensation::getLatency). Raises RuntimeError for an unknown player.
+PyObject* pmgr_p_getLatency(PyObject*, PyObject* args)
+{
+    int playerId;
+    if (py_arg<int>(args, 0, playerId))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    return PyFloat_FromDouble(world::LatencyCompensation::getLatency(player));
+}
+
 // pmgr_getScore - ELF 0x815AB50 (1476 B), PE 0x537360 (960 B). The string key set, map-clearing
 // side effects and RuntimeError text are all cross-checked between the ports.
 PyObject* pmgr_getScore(PyObject*, PyObject* args)
@@ -1638,6 +1806,261 @@ PyObject* gl_sendEndOfRoundData(PyObject*, PyObject* args)
     const void* const buffer = endOfRound.getNetBuffer();
     static_cast<GameServer*>(game)->sendDataBlockToAll(8, buffer, size, true);
 
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's kick with a reason; not a retail host method.
+// host.sgl_kickPlayer(playerId, reason) queues the kick as admin.kickPlayer does, but with
+// disconnect reason 34, whose text the client shows. The text goes out capped at 200 characters.
+// Raises RuntimeError when there is no server or no such player.
+PyObject* sgl_kickPlayer(PyObject*, PyObject* args)
+{
+    int playerId;
+    std::string reason;
+    if (py_arg<int>(args, 0, playerId) + py_arg<std::string>(args, 1, reason))
+        return 0;
+
+    IGameServer* const server = game
+        ? static_cast<IGameServer*>(game->queryInterface(IID_IGameServer)) : 0;
+    if (!server)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "not a server");
+        return 0;
+    }
+    if (!world::playerManager->getPlayerFromId(playerId))
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    server->kickPlayer(playerId, static_cast<io::PResult>(34), reason);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+namespace {
+// [CHOSEN, not recovered] The player's soldier for sgl_pickUpKit / sgl_giveKit. Raises RuntimeError
+// and returns null when there is no such player or the soldier cannot hold items.
+world::IObject* kitReceivingSoldier(int playerId, world::IPlayer*& player)
+{
+    player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+    world::IObject* const soldier = player->getDefaultVehicle();
+    if (!soldier || !soldier->queryInterface(world::IID_IItemContainerObject))
+    {
+        PyErr_SetString(PyExc_RuntimeError, "the player's soldier cannot pick up items");
+        return 0;
+    }
+    return soldier;
+}
+}
+
+// [CHOSEN, not recovered] Project Reality's forced kit pickup; not a retail host method.
+// host.sgl_pickUpKit(playerId, kit) makes the player's soldier pick up an existing kit, as walking
+// over it would. Raises RuntimeError when there is no such player or the soldier cannot hold items.
+PyObject* sgl_pickUpKit(PyObject*, PyObject* args)
+{
+    int playerId;
+    world::IObject* kit = 0;
+    if (py_arg<int>(args, 0, playerId) + py_arg<world::IObject*>(args, 1, kit))
+        return 0;
+
+    world::IPlayer* player = 0;
+    world::IObject* const soldier = kitReceivingSoldier(playerId, player);
+    if (!soldier)
+        return 0;
+
+    gameLogic->handlePickup(kit, player, soldier, true);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's kit request; not a retail host method.
+// host.sgl_giveKit(playerId, kitTemplateName) creates a kit of that template and has the player's
+// soldier pick it up, as ServerGameLogic::getNewKit does for the selected kit. Returns False when
+// the player cannot take a kit now (dead, man-down, or the soldier is inside a vehicle). Raises
+// RuntimeError for an unknown player or a template that is not a kit. Stamps the player's kit time,
+// as getNewKit does.
+PyObject* sgl_giveKit(PyObject*, PyObject* args)
+{
+    int playerId;
+    std::string templateName;
+    if (py_arg<int>(args, 0, playerId) + py_arg<std::string>(args, 1, templateName))
+        return 0;
+
+    world::IPlayer* player = 0;
+    world::IObject* const soldier = kitReceivingSoldier(playerId, player);
+    if (!soldier)
+        return 0;
+
+    world::IObjectTemplate* const objectTemplate =
+        world::objectTemplateManager->getTemplate(templateName);
+    void* const kitTemplate = objectTemplate
+        ? objectTemplate->queryImplementation(world::CID_KitTemplate) : 0;
+    if (!kitTemplate)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "not a kit template");
+        return 0;
+    }
+
+    if (!player->getIsAlive() || player->getIsManDown() || soldier->getParent())
+        return PyInt_FromLong(0);
+
+    Vec3 zero;
+    zero.x = zero.y = zero.z = 0.0f;
+    world::IObject* const kit = game->createObjectOnAllClients(
+        static_cast<const world::IObjectTemplate*>(kitTemplate), zero, zero, true, 0, 0);
+    if (!kit)
+        return PyInt_FromLong(0);
+
+    gameLogic->handlePickup(kit, player, soldier, true);
+    player->setKitTimeStamp(WorldPref::getWorldTime());
+    return PyInt_FromLong(1);
+}
+
+// [CHOSEN, not recovered] Project Reality's admin squad reset; not a retail host method.
+// host.sgl_resetSquads() resets squads 1-9 of teams 1 and 2.
+PyObject* sgl_resetSquads(PyObject*, PyObject*)
+{
+    ISquadManager* const squads = static_cast<ISquadManager*>(squadManager);
+    for (int team = 1; team <= 2; ++team)
+        for (int squad = 1; squad <= 9; ++squad)
+            squads->resetSquad(team, squad);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's admin and rule kills; not a retail host method.
+// host.sgl_killPlayer(playerId) kills the player outright, as the console suicide does but without
+// its PlayerKilled event: the player leaves any vehicle, ladder or zipline, cannot be revived, and
+// PlayerDeath fires. Returns False when the player is already dead. Raises RuntimeError for an
+// unknown player.
+PyObject* sgl_killPlayer(PyObject*, PyObject* args)
+{
+    int playerId;
+    if (py_arg<int>(args, 0, playerId))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    return PyInt_FromLong(gameLogic->killPlayer(player, true, true) ? 1 : 0);
+}
+
+// [CHOSEN, not recovered] Project Reality's forced vehicle exit; not a retail host method.
+// host.sgl_exitVehicle(playerId) takes the player out of their vehicle seat as pressing Use would,
+// keeping the vehicle's momentum, but without Use's cooldown and without entering another vehicle.
+// Returns False when the player is not in a seat or the seat refuses the exit. Raises RuntimeError
+// for an unknown player.
+PyObject* sgl_exitVehicle(PyObject*, PyObject* args)
+{
+    int playerId;
+    if (py_arg<int>(args, 0, playerId))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    return PyInt_FromLong(
+        static_cast<ServerGameLogic*>(gameLogic)->exitVehicleForScript(player) ? 1 : 0);
+}
+
+// [CHOSEN, not recovered] Project Reality's forced weapon switch; not a retail host method.
+// host.sgl_selectItem(playerId, itemIndex) switches the player's soldier to the item in that slot
+// (1-9, the weapon-select keys) as the key would, through GameLogic::switchToWeaponFromIndex; the
+// soldier's networkable carries the switch to every client, its owner included. Returns True when
+// that item is now active, False when the player is not on foot or the slot holds nothing
+// selectable. Raises RuntimeError for an unknown player.
+PyObject* sgl_selectItem(PyObject*, PyObject* args)
+{
+    int playerId;
+    int itemIndex;
+    if (py_arg<int>(args, 0, playerId) + py_arg<int>(args, 1, itemIndex))
+        return 0;
+
+    world::IPlayer* const player = world::playerManager->getPlayerFromId(playerId);
+    if (!player)
+    {
+        PyErr_SetString(PyExc_RuntimeError, "no such player");
+        return 0;
+    }
+
+    world::IObject* const soldier = player->getDefaultVehicle();
+    if (!soldier || player->getVehicle() != soldier || !soldier->queryInterface(world::IID_ISoldier))
+        return PyInt_FromLong(0);
+
+    world::IPlayerControlObject* const pco = static_cast<world::IPlayerControlObject*>(
+        soldier->queryInterface(world::IID_IPlayerControlObject));
+    world::IObject* const active = pco->getActiveWeapon(0);
+    world::IItemObject* const activeItem = active
+        ? static_cast<world::IItemObject*>(active->queryInterface(world::IID_IItemObject)) : 0;
+    if (activeItem && activeItem->getItemIndex() == itemIndex)
+        return PyInt_FromLong(1);
+
+    return PyInt_FromLong(static_cast<GameLogic*>(gameLogic)
+        ->switchToWeaponFromIndex(pco, player, soldier, false, itemIndex) ? 1 : 0);
+}
+
+// [CHOSEN, not recovered] Project Reality's squad order read; not a retail host method.
+// host.sgl_getSquadOrder(team, squad) returns (orderType, (x, y, z)) for the squad leader's
+// current order, or None when the squad has none (or squad is 0, no squad).
+PyObject* sgl_getSquadOrder(PyObject*, PyObject* args)
+{
+    int team;
+    int squad;
+    if (py_arg<int>(args, 0, team) + py_arg<int>(args, 1, squad))
+        return 0;
+
+    ISquadInfo* const info = squad
+        ? static_cast<ISquadManager*>(squadManager)->getSquadInfo(team, squad) : 0;
+    const SquadOrder* const order = info ? info->getSquadOrders() : 0;
+    if (!order)
+    {
+        Py_INCREF(Py_None);
+        return Py_None;
+    }
+
+    const Vec3& p = order->points[0];
+    return Py_BuildValue("(i(fff))", order->orderId, p.x, p.y, p.z);
+}
+
+// [CHOSEN, not recovered] Project Reality's anti-air override; not a retail host method.
+// host.sgl_disableExplosionLatencyComp(templateName): explosions of projectiles with this template
+// skip latency compensation, and the projectile is removed two ticks later.
+PyObject* sgl_disableExplosionLatencyComp(PyObject*, PyObject* args)
+{
+    std::string templateName;
+    if (py_arg<std::string>(args, 0, templateName))
+        return 0;
+
+    world::GameLogicExplosion::disableLatencyCompensationFor(templateName);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+// [CHOSEN, not recovered] Project Reality's projectile-created filter; not a retail host method.
+// host.sgl_addProjectileCreatedTemplate(templateName): from now on the ProjectileCreated event
+// fires for every fired projectile of that template (case-insensitive).
+PyObject* sgl_addProjectileCreatedTemplate(PyObject*, PyObject* args)
+{
+    std::string templateName;
+    if (py_arg<std::string>(args, 0, templateName))
+        return 0;
+
+    world::FireComp::notifyScriptsOnCreate(templateName);
     Py_INCREF(Py_None);
     return Py_None;
 }
@@ -1902,6 +2325,11 @@ const ScriptEventMapEntry scriptEventMap[] =
     { "BeginRound",                 36 },  { "EndRound",                  37 },
     { "RemoteCommand",              38 },  { "ChatMessage",               39 },
     { "ValidatePlayerNameResponse", 40 },  { "SpottedMessageSent",        41 },
+    // [CHOSEN, not recovered] Project Reality events, not in retail: Player::setSpawnGroup's
+    // (playerId, group), ObjectSpawner::spawnObject's (object), and FireComp's (weapon, projectile)
+    // for templates listed with host.sgl_addProjectileCreatedTemplate.
+    { "PlayerChangeSpawnGroup",     42 },  { "ObjectSpawned",             43 },
+    { "ProjectileCreated",          44 },
     { 0,                             0 },
 };
 
@@ -2010,6 +2438,9 @@ PyMethodDef method_table[] =
     { "pmgr_isIndexValid",           pmgr_isIndexValid,                  METH_VARARGS, 0 },
     { "pmgr_p_get",                  pmgr_p_get,                         METH_VARARGS, 0 },
     { "pmgr_p_set",                  pmgr_p_set,                         METH_VARARGS, 0 },
+    { "pmgr_p_getInput",             pmgr_p_getInput,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "pmgr_p_setIgnoreCombatArea",  pmgr_p_setIgnoreCombatArea,         METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "pmgr_p_getLatency",           pmgr_p_getLatency,                  METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "pmgr_getScore",               pmgr_getScore,                      METH_VARARGS, 0 },
     { "pmgr_setScore",               pmgr_setScore,                      METH_VARARGS, 0 },
     { "pmgr_enableScoreEvents",      pmgr_enableScoreEvents,             METH_VARARGS, 0 },
@@ -2036,6 +2467,16 @@ PyMethodDef method_table[] =
     { "sgl_sendRankEvent",           sgl_sendRankEvent,                  METH_VARARGS, 0 },
     { "sgl_sendHudEvent",            sgl_sendHudEvent,                   METH_VARARGS, 0 },
     { "sgl_sendTextMessage",         sgl_sendTextMessage,                METH_VARARGS, 0 },
+    { "sgl_kickPlayer",              sgl_kickPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_pickUpKit",               sgl_pickUpKit,                      METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_giveKit",                 sgl_giveKit,                        METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_resetSquads",             sgl_resetSquads,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_getSquadOrder",           sgl_getSquadOrder,                  METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_killPlayer",              sgl_killPlayer,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_exitVehicle",             sgl_exitVehicle,                    METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_selectItem",              sgl_selectItem,                     METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_disableExplosionLatencyComp", sgl_disableExplosionLatencyComp, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
+    { "sgl_addProjectileCreatedTemplate", sgl_addProjectileCreatedTemplate, METH_VARARGS, 0 },   // [CHOSEN, not recovered]
     { "gl_sendEndOfRoundData",       gl_sendEndOfRoundData,              METH_VARARGS, 0 },
     { "ss_getParam",                 ss_getParam,                        METH_VARARGS, 0 },
     { "sgl_getSettingsBool",         sgl_getSettingsBool,                METH_VARARGS, 0 },
@@ -2108,6 +2549,16 @@ bool PythonHost::initialize(bool minimal)
     // Skip import site; the game installs its own Python module search path.
     Py_NoSiteFlag = 1;
 
+    // [CHOSEN, not recovered] PR's scripts import _realitycore. Built-in modules are found before
+    // sys.path, so this also shadows PR's prebuilt _realitycore.so. See External/realitycore.
+    // The inittab outlives Py_Finalize, so a shutdown/initialize cycle must not append it again.
+    static bool realitycoreRegistered = false;
+    if (!realitycoreRegistered)
+    {
+        PyImport_AppendInittab(const_cast<char*>("_realitycore"), init_realitycore);
+        realitycoreRegistered = true;
+    }
+
     Py_Initialize();
     // Install the game module search path.
     std::string modDir = settings->stringGet(std::string("GSModDirectory"), std::string());
@@ -2149,8 +2600,9 @@ bool PythonHost::initialize(bool minimal)
             return false;
         }
 
-        // THE magic 42 - see the block above.
-        d->m_vector28.resize(42);                        // +0x28, indexed by ScriptEvent
+        // THE magic 42 - see the block above. [CHOSEN, not recovered] 45 here: three more for
+        // PlayerChangeSpawnGroup, ObjectSpawned and ProjectileCreated.
+        d->m_vector28.resize(45);                        // +0x28, indexed by ScriptEvent
 
         PyObject* const bf2Dict = PyModule_GetDict(d->m_bf2Module);
 
@@ -2801,10 +3253,14 @@ bool PythonHost::initializeGameMode(const std::string& gameMode)
     deadScript << "game.gamemodes." << modeName << ".init()\n";
 
     std::string moduleName = std::string("game.gamemodes.") + modeName;
+    // [CHOSEN, not recovered] Import and init failures are reported as Error, not retail's Log. The
+    // dedicated server opens no log file, so a Log entry is lost and the operator saw only
+    // GameServer's generic "failed to initialize gamemode"; as an Error the Python traceback is the
+    // fatal message. GameServer stops on this failure anyway, so only the reported text changes.
     PyObject* module = PyImport_ImportModule(const_cast<char*>(moduleName.c_str()));
     if (!module)
     {
-        Debug(DEBUGTYPE_8, "Game/Python/PythonHost.cpp", 369)
+        Debug(DEBUGTYPE_6, "Game/Python/PythonHost.cpp", 369)
             << "couldn't import game mode " << modeName << ": " << getExceptionText();
         return false;
     }
@@ -2823,7 +3279,7 @@ bool PythonHost::initializeGameMode(const std::string& gameMode)
     PyObject* result = PyObject_CallFunction(init, 0);
     if (!result)
     {
-        Debug(DEBUGTYPE_8, "Game/Python/PythonHost.cpp", 383)
+        Debug(DEBUGTYPE_6, "Game/Python/PythonHost.cpp", 383)
             << "python game mode " << modeName << " failed to initialize: " << getExceptionText();
         Py_XDECREF(init);
         Py_XDECREF(module);

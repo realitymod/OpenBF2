@@ -70,15 +70,17 @@ inline unsigned int packetStatusManagerMask(const PacketStatus& status)
 
 // Connection bandwidth tiers. Columns 0/2 are client rate/packet size, 1/3 are
 // server rate/packet size, and 4/5 are interpolation/extrapolation milliseconds.
-// The first two tiers have identical settings.
+// [CHOSEN, not recovered] Rows 0, 4 and 5 carry Project Reality's server values; retail has
+// row 0 = row 1, row 4's packet 512 and row 5 = { 30, 20, 320, 640 }. GameServer overrides row 5's
+// packet size with sv.maxPacketSize.
 const int g_connectionTypes[6][6] =
 {
-    { 10,  4, 160, 320, 200, 200 },     // 0
-    { 10,  4, 160, 320, 200, 200 },     // 1  identical to 0
+    { 10, 30, 160, 896, 200, 200 },     // 0
+    { 10,  4, 160, 320, 200, 200 },     // 1
     { 30, 10, 160, 350, 200, 200 },     // 2
     { 30, 20, 320, 400, 200, 200 },     // 3
-    { 30, 20, 320, 512, 200, 200 },     // 4
-    { 30, 20, 320, 640, 200, 200 }      // 5
+    { 30, 20, 320, 896, 200, 200 },     // 4
+    { 30, 30, 320, 896, 200, 200 }      // 5
 };
 
 const int* connectionTypeRow(int type) { return g_connectionTypes[type]; }
@@ -131,7 +133,8 @@ ClientConnection::ClientConnection(ConnectionDemoMode demoMode)
 {
     // Ping samples remain uninitialized until collected; averaging starts only after all 32 are written.
     // Recording uses a staging stream 64 times larger than normal traffic.
-    m_bitStream = new io::BitStream(m_demoMode == 1 ? 0x10000u : 0x400u);   // new(0x64)
+    // [CHOSEN, not recovered] 0x580, Project Reality's size, fits its 0x540-byte packets; retail 0x400.
+    m_bitStream = new io::BitStream(m_demoMode == 1 ? 0x10000u : 0x580u);   // new(0x64)
     // `if (!m_bitStream)` + Debug(6, ..., 81) "failed to create bitstream" - unreachable, see above.
 
     // 2. the four managers, in the ELF's order.

@@ -360,6 +360,10 @@ public:
     // Applies decoded remote weapon ammunition state to the player's live weapons.
     void          forceSetRemoteClientAmmo(unsigned int firedMask);
 
+    // [CHOSEN, not recovered] Project Reality's combat-area exemption, for
+    // host.pmgr_p_setIgnoreCombatArea: while set, uPlayingInsideGameArea treats the player as inside.
+    void          setIgnoresCombatArea(bool ignores) { m_ignoresCombatArea = ignores; }
+
 private:
     // Non-vtable Player helpers, all attested by their ELF manglings and direct callers. Keeping
     // these private avoids inventing a wider gameplay API for implementation details.
@@ -472,11 +476,12 @@ protected:
     /* +0x134 */ bool   m_isGivingAbility;           // 0 was m_isSquadLeader - that is +0xF5
     /* +0x135 */ bool   m_isRepairing;               // 0
     /* +0x136 */ bool   m_isGivingReplenish;         // 0
-    // Nearby mines are tracked by weak object handle. The separate countdown refreshes
-    // proximity every 0.2 seconds; following fields hold radio-spam state.
+    // Nearby mines are tracked by weak object handle. Retail refreshes proximity every 0.2 seconds
+    // on the separate countdown; this fork turns that check off, so the map stays empty and the
+    // countdown unused. The following fields hold radio-spam state.
     /* +0x138 */ std::map<WeakPtr<world::IObject>, ItemStatus> m_closeMines;   // +0x138 header ptr,
                                                      //   +0x13C node count, +0x140 the comparator
-    /* +0x144 */ float  m_closeMineCheckTimer;       // 0.0f  [CHOSEN] - update()'s 0.2 s cadence
+    /* +0x144 */ float  m_closeMineCheckTimer;       // 0.0f  [CHOSEN] - retail update()'s 0.2 s cadence
     /* +0x148 */ int    m_radioSpamFlagCount;        // 0     IPlayer.h records (int +0x148)
     /* +0x14C */ int    m_radioSpamBlockedFlagCount; // 0     IPlayer.h records (int +0x14C)
     /* +0x150 */ float  m_radioSpamFilterFlagTimer;  // 1.0f IPlayer.h records (float +0x150)
@@ -598,6 +603,7 @@ protected:
     /* +0x334 */ world::CPersistentExplosionEffectManager* m_explosionEffects;   // the ctor argument
     // Private copy of the last supplied input, independent of later caller changes.
     /* +0x338 */ io::PlayerInput m_playerInput;      // 0x338..0x44B - the whole tail of the object
+    bool m_ignoresCombatArea;                        // [CHOSEN, not recovered] ctor false
 };
 
 

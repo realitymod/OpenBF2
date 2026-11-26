@@ -31,6 +31,14 @@ public:
     virtual float getMaxDeviation() const;
     virtual void setAIDeviation(float deviation);
 
+    // [CHOSEN, not recovered] Project Reality's scripts read and set the decaying turn, speed and
+    // misc penalties (deviation on weapon switch) and their template limits.
+    void getPenalties(float& turn, float& speed, float& misc) const
+        { turn = m_turnDeviation; speed = m_speedDeviation; misc = m_miscDeviation; }
+    void setPenalties(float turn, float speed, float misc)
+        { m_turnDeviation = turn; m_speedDeviation = speed; m_miscDeviation = misc; }
+    const SoldierDeviationCompTemplate* getSoldierTemplate() const { return m_soldierTemplate; }
+
 private:
     /* +0x2C */ int m_soldierRefCount;
     /* +0x30 */ float m_turnDeviation;

@@ -42,7 +42,7 @@
     {
       "name": "linux-x64",
       "displayName": "BF2 native Linux x86-64 dedicated port",
-      "description": "GCC or Clang on Linux: builds bf2 and libdice_py.so into out/build/linux-x64/bin_linux. Needs cmake, ninja, g++ and libncurses-dev.",
+      "description": "GCC or Clang on Linux: builds bf2 into out/build/linux-x64/bin_linux. Needs cmake, ninja, g++, libncurses-dev and libpython2.7-dev.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "condition": {
@@ -84,11 +84,10 @@
     },
     {
       "name": "linux-x64",
-      "displayName": "Build bf2 and libdice_py.so",
+      "displayName": "Build bf2",
       "configurePreset": "linux-x64",
       "targets": [
-        "bf2",
-        "dice_py_check"
+        "bf2"
       ]
     }
   ],
