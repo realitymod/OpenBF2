@@ -20,7 +20,6 @@
 #include "../../GameEvents/SetAcceptOrderEvent.h"    // setIsAccepted's broadcast
 #include "../../GameEvents/SetPrivateSquadEvent.h"   // sendSquadManagerState's privacy replay
 #include "../../GameEvents/SetSquadLeaderEvent.h"    // leader-change broadcast
-#include "../../GameServer/ServerSettings.h"          // sv.maxSquadMembers
 #include "../../IGame.h"                             // game - sendGameEventToAllConnected (+0x94)
 #include "../../IGameLogic.h"                        // gameLogic - isServer, for getCommander
 #include "../../Objects/ICameraObject.h"             // commander-to-soldier camera query
@@ -265,7 +264,7 @@ bool SquadManager::addToSquad(int teamId, int squadId, int playerId)
 }
 
 // addToSquad(int,int,int,int) - ELF 0x811CC20, 802 B / PE 0x45FE70. This is the admission gate:
-// sv.maxSquadMembers cap (retail six), then private-squad invitation. Failure notifications and
+// getMaxSquadMembers cap (retail six), then private-squad invitation. Failure notifications and
 // their recipients are preserved exactly; the actual membership transition lives in Squad.
 bool SquadManager::addToSquad(int /*unused*/, int squadId, int playerId, int teamId)
 {
@@ -284,7 +283,7 @@ bool SquadManager::addToSquad(int /*unused*/, int squadId, int playerId, int tea
     // [CHOSEN, not recovered] Project Reality lets dead and man-down players join a squad. Retail
     // refuses here a man-down player, and a dead one whose score record has m_field10 > 0.
 
-    if (world::playerManager->getNrOfPlayersInSquad(teamId, squadId) >= serverSettings->m_maxSquadMembers)
+    if (world::playerManager->getNrOfPlayersInSquad(teamId, squadId) >= getMaxSquadMembers())
     {
         if (playerId == 255)
             eventManager->postEvent(ECHud, 11, &squadId, 0.0f);

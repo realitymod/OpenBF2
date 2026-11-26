@@ -494,9 +494,6 @@ BF2_SV_CLAMPED(actionBufferMaxSize, int, m_actionBufferMaxSize, 2, 4)
 BF2_SV_CLAMPED(maxPacketSize,       int, m_maxPacketSize,       0x380, 0x540)
 BF2_SV_FIELD(connectionTimeout, int, m_connectionTimeout)
 
-// [CHOSEN, not recovered] Project Reality's squad size; not a retail property.
-BF2_SV_CLAMPED(maxSquadMembers, int, m_maxSquadMembers, 1, 12)
-
 //  / 0x82AD88 -> ctors 0x4D74E0 / 0x4D76D0, executors 0x4D7630 / 0x4D7820. Both GET through
 // compound accessors and SET raw: getUseGlobalRank is `ranked && internet && field`, and
 // getUseGlobalUnlocks is `ranked || (internet && field)`. So on a LAN server both report false (rank)

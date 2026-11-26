@@ -207,9 +207,6 @@ public:
     int   m_actionBufferMaxSize;         //        2      2..4
     int   m_maxPacketSize;               //        1344   connection type 5, 896..1344
     int   m_connectionTimeout;           //        45000  ms, applied when the listener starts
-
-    // [CHOSEN, not recovered] Project Reality's squad size; retail hard-codes 6.
-    int   m_maxSquadMembers;             //        8
 };
 
 // Reserved nicknames and their configuration filename.
