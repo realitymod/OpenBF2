@@ -1,6 +1,5 @@
 // Starts/stops round demo capture and runs the configured completion hook in a worker thread.
 // The server update picks up hook completion before announcing the recording to clients.
-// [FRONTIER] The client-facing availability announcement stops in onAutoRecordingAvailable.
 
 #include "AutoRecorder.h"
 

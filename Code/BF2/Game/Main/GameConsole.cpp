@@ -8,6 +8,7 @@
 #include "Game.h"               // operator>>(istream&, TargetChannel&) - game.radioMessage's converter
 #include "../IGameServer.h"     // IGameServer::sayAll/sayTeam - game.sayAll/sayTeam's receiver interface
 #include "../Utility/Vars.h"    // vars.set's receiver - Vars::set(std::string, std::string)
+#include "../IGameClient.h"     // the demo playback controls' receiver
 #include "../../Scene/Object/PlayerManager.h"   // game.radioMessage's sender - the local human
 #if !DEDICATED
 #include "BF2ClientSeams.h"     // BF2Render::toggleFullscreen - game.toggleFullscreen's target
@@ -25,6 +26,69 @@ namespace {
 const char* const kGameConsoleTag = "hfe.game";
 
 } // namespace
+
+// Demo recording commands at access level 1, available while the engine exists. Recording itself
+// needs a server game; BF2Engine::recordDemo reports the refusal on a client.
+BF2_CONSOLE_OBJECT("demo", 1, 0)
+
+namespace {
+void demoRecordDemo(const std::string& name)
+{
+    ::dice::hfe::bf2Engine->recordDemo(name);
+}
+
+void demoStopRecording()
+{
+    ::dice::hfe::bf2Engine->stopRecording();
+}
+
+void demoShutdownDemo()
+{
+    ::dice::hfe::bf2Engine->shutdownDemo();
+}
+} // namespace
+BF2_CONSOLE_METHOD_1_STATIC_ACTIVE(recordDemo, demoRecordDemo, ::dice::hfe::bf2Engine != 0, std::string, kGameConsoleTag)
+BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(stopRecording, demoStopRecording, ::dice::hfe::bf2Engine != 0, kGameConsoleTag)
+BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(shutdownDemo, demoShutdownDemo, ::dice::hfe::bf2Engine != 0, kGameConsoleTag)
+
+// Demo playback controls at access level 2, driven by the HUD's demo radio menus. They act on the
+// game client, so a dedicated server never activates them.
+BF2_CONSOLE_OBJECT("demo", 2, 0)
+
+namespace {
+IGameClient* queryGameClient()                          //  [CHOSEN] name
+{
+    return ::dice::hfe::game
+        ? static_cast<IGameClient*>(::dice::hfe::game->queryInterface(IID_IGameClient)) : 0;
+}
+
+void demoRestartDemo()
+{
+    queryGameClient()->restartDemo();
+}
+
+// Content passes 1 for the next player and 0 for the previous one. IGameClient's name for this
+// slot, setDemoPaused, predates that evidence.
+void demoTogglePlayerDemo(bool next)
+{
+    queryGameClient()->setDemoPaused(next);
+}
+
+void demoToggleCameraDemo()
+{
+    queryGameClient()->slot50();
+}
+
+void demoToggleDemoPauseOrPlay()
+{
+    queryGameClient()->togglePause();
+}
+} // namespace
+BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(restartDemo, demoRestartDemo, queryGameClient() != 0, kGameConsoleTag)
+BF2_CONSOLE_METHOD_1_STATIC_ACTIVE(togglePlayerDemo, demoTogglePlayerDemo, queryGameClient() != 0, bool, kGameConsoleTag)
+BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(toggleCameraDemo, demoToggleCameraDemo, queryGameClient() != 0, kGameConsoleTag)
+BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(toggleDemoPauseOrPlay, demoToggleDemoPauseOrPlay, queryGameClient() != 0,
+                                   kGameConsoleTag)
 
 // bf2Engine console defaults and the engine lifecycle commands, registered in both images.
 BF2_CONSOLE_OBJECT("bf2Engine", 2, 0)
@@ -170,22 +234,6 @@ void gameToggleFullscreen()
 } // namespace
 BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(toggleFullscreen, gameToggleFullscreen,
                                    ::dice::hfe::bf2Engine->getBF2Render() != 0, kGameConsoleTag)
-#endif
-
-#if 0 // [RETIRE-WHEN: demo recording feature is implemented]
-// demo.recordDemo / demo.stopRecording - dedicated PE defaults 0x759A2E ("demo", access 1,
-// category 0); ctors 0x411970 / 0x411B40 (vtable off_785498 / off_785528), both file-static and
-// returning "void". The shared gate 0x4113C0 is `dword_837F9C != 0` (bf2Engine); executors
-// 0x411A60 / 0x411BD0 call BF2Engine::recordDemo / stopRecording (PE 0x402A50 / 0x4026F0).
-BF2_CONSOLE_OBJECT("Demo", 1, 0)
-namespace {
-void demoRecord(const std::string& name) { ::dice::hfe::bf2Engine->recordDemo(name); }
-void demoStopRecording() { ::dice::hfe::bf2Engine->stopRecording(); }
-} // namespace
-BF2_CONSOLE_METHOD_1_STATIC_ACTIVE(recordDemo, demoRecord, ::dice::hfe::bf2Engine != 0,
-                                   std::string, kGameConsoleTag)
-BF2_CONSOLE_METHOD_0_STATIC_ACTIVE(stopRecording, demoStopRecording, ::dice::hfe::bf2Engine != 0,
-                                   kGameConsoleTag)
 #endif
 
 // Handed to the console registry by ModuleBF2::init, the way the original registers 0x8AD45A8.

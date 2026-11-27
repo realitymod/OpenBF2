@@ -238,7 +238,7 @@ public:
 
     //  / dedicated PE 0x448840, 292 B. AutoRecorder::update calls it once a hook
     // has published a demo: it substitutes the file into sv.demoDownloadURL's "{file}" token and
-    // broadcasts data block 9. [FRONTIER] until DemoAvailableInfo is recovered.
+    // broadcasts data block 9.
     void onAutoRecordingAvailable(const std::string& fileName, const std::string& mapName);
     void clientLoadComplete(int);
     void clientSendPlayerDatabase(int);                       // handleClientInfo's tail
